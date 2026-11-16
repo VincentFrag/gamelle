@@ -1,0 +1,498 @@
+// Éléments d'interface partagés : étiquettes de prix, macros, choix de recette, actions sur un repas.
+import * as calc from '../calc.js';
+import * as food from '../food.js';
+import * as plan from '../plan.js';
+import * as have from '../have.js';
+import { esc, icon, openSheet, menuSheet, toast, formData } from '../ui.js';
+
+export function priceTag(eur, { big = false, cls = '' } = {}) {
+  return `<span class="price ${big ? 'is-big' : ''} ${cls}"><span class="price-int">${esc(calc.fmtEur(eur).replace(' €', ''))}</span><span class="price-cur">€</span></span>`;
+}
+
+export function macros(st, { short = false } = {}) {
+  if (!st) return '';
+  const p = st.p == null ? '' : `<span class="m m-p"><b>${calc.fmt0(st.p)}</b> g prot.</span>`;
+  if (short) return `<span class="macros"><span class="m"><b>${calc.fmt0(st.kcal)}</b> kcal</span>${p}</span>`;
+  return `<span class="macros"><span class="m"><b>${calc.fmt0(st.kcal)}</b> kcal</span>${p}${st.c == null ? '' : `<span class="m m-c"><b>${calc.fmt0(st.c)}</b> g gluc.</span><span class="m m-f"><b>${calc.fmt0(st.f)}</b> g lip.</span>`}</span>`;
+}
+
+// Barre de progression vers l'objectif du jour
+export function gauge(value, target, label, cls = '') {
+  if (!target) return '';
+  const ratio = value / target;
+  const pct = Math.min(100, Math.round(ratio * 100));
+  const state = ratio > 1.1 ? 'is-over' : ratio >= 0.9 ? 'is-ok' : '';
+  return `<div class="gauge ${cls} ${state}">
+    <div class="gauge-text"><span>${esc(label)}</span><span><b>${calc.fmt0(value)}</b> / ${calc.fmt0(target)}</span></div>
+    <div class="gauge-track"><span class="gauge-fill" style="width:${pct}%"></span></div>
+  </div>`;
+}
+
+export function styleTag(r) {
+  if (!r) return '';
+  return `<span class="tag style-${r.style}">${esc(food.STYLE_LABELS[r.style] || '')}</span>`;
+}
+
+export function recipeMeta(r) {
+  const bits = r.time ? [`${r.time} min`] : ['sans préparation'];
+  if (food.isLot(r)) bits.push(`${r.serves} parts`);
+  if ((r.equip || []).includes('four')) bits.push('four');
+  if (r.mc) bits.push('Monsieur Cuisine');
+  if (r.freeze) bits.push('se congèle');
+  return bits.join(', ');
+}
+
+export function recipeRow(r, { href = true, data = '' } = {}) {
+  const st = food.recipeStats(r);
+  const tag = href ? 'a' : 'button';
+  const attr = href ? `href="#/recettes/${esc(r.id)}"` : `type="button" ${data}`;
+  return `<${tag} class="list-row recipe-row" ${attr}>
+    <span class="list-main"><span class="rr-name">${esc(r.name)}</span>
+      <small>${esc(recipeMeta(r))}</small>
+      <small class="rr-macros">${calc.fmt0(st.kcal)} kcal, ${calc.fmt0(st.p)} g de protéines ${food.isLot(r) ? 'la part' : 'par portion'}</small></span>
+    ${priceTag(st.cost)}
+  </${tag}>`;
+}
+
+// ---------- Choisir une recette ----------
+export function pickRecipe({ title = 'Choisir une recette', cat = null, cats = ['diner', 'petitdej', 'collation'], only = null } = {}) {
+  const s = calc.settings();
+  let filter = cat || cats[0];
+  let q = '';
+  return openSheet({
+    title,
+    wide: true,
+    body: `<label class="search"><span class="sr-only">Rechercher</span><input type="search" placeholder="Rechercher une recette ou un ingrédient" data-q autocomplete="off"></label>
+      <div class="chips tight" role="group" aria-label="Type">
+        ${cats.length > 1 ? cats.map((k) => `<button type="button" class="chip ${k === filter ? 'is-on' : ''}" data-cat="${k}">${esc(food.CAT_LABELS[k])}</button>`).join('') : ''}
+      </div>
+      <div class="list pick-results" data-results></div>`,
+    onMount(el, api) {
+      const draw = () => {
+        const nq = food.norm(q);
+        const list = food.recipes()
+          .filter((r) => r.cat === filter && (!only || only(r)))
+          .filter((r) => !nq || food.norm(r.name).includes(nq) || r.ing.some(([id]) => food.norm(food.ingredient(id)?.name).includes(nq)))
+          .sort((a, b) => (food.usable(b, s) - food.usable(a, s)) || a.name.localeCompare(b.name, 'fr'));
+        el.querySelector('[data-results]').innerHTML = list.length
+          ? list.map((r) => recipeRow(r, { href: false, data: `data-pick="${esc(r.id)}"` })).join('')
+          : '<p class="empty pad">Aucune recette ne correspond.</p>';
+      };
+      el.querySelector('[data-q]').addEventListener('input', (e) => { q = e.target.value; draw(); });
+      el.addEventListener('click', (e) => {
+        const c = e.target.closest('[data-cat]');
+        if (c) {
+          filter = c.dataset.cat;
+          el.querySelectorAll('[data-cat]').forEach((b) => b.classList.toggle('is-on', b === c));
+          draw();
+          return;
+        }
+        const p = e.target.closest('[data-pick]');
+        if (p) api.close(p.dataset.pick);
+      });
+      draw();
+    },
+  });
+}
+
+// ---------- Saisie d'un repas hors recette (commande, repas libre) ----------
+function outsideSheet(day, slot, kind, cur) {
+  const s = calc.settings();
+  const isUber = kind === 'uber';
+  return openSheet({
+    title: isUber ? 'Commande' : 'Repas libre',
+    body: `<form class="form" data-form>
+      <p>${isUber ? 'Note la commande pour garder un compteur honnête. Le prix et les calories sont pré-remplis avec tes valeurs habituelles.' : 'Restaurant, repas chez des amis, cantine… Une estimation suffit.'}</p>
+      <label class="field"><span>Description</span><input name="label" maxlength="80" value="${esc(cur?.label || '')}" placeholder="${isUber ? 'Ex. : burger frites' : 'Ex. : resto avec l’équipe'}"></label>
+      <div class="field-row">
+        <label class="field"><span>Prix (€)</span><input name="cost" inputmode="decimal" value="${esc(calc.numInput(cur?.cost ?? (isUber ? s.uber.avg : null)))}"></label>
+        <label class="field"><span>Calories (estimation)</span><input name="kcal" inputmode="numeric" value="${esc(calc.numInput(cur?.kcal ?? (isUber ? s.uber.kcal : s.libreKcal)))}"></label>
+      </div>
+      <div class="chips tight" role="group" aria-label="Taille du repas">
+        <button type="button" class="chip" data-kcal="600">Léger, 600</button>
+        <button type="button" class="chip" data-kcal="900">Normal, 900</button>
+        <button type="button" class="chip" data-kcal="1300">Copieux, 1 300</button>
+      </div>
+    </form>`,
+    onMount(el) {
+      el.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-kcal]');
+        if (b) el.querySelector('[name=kcal]').value = b.dataset.kcal;
+      });
+    },
+    actions: [
+      { label: 'Annuler', value: null },
+      {
+        label: 'Enregistrer', kind: 'primary',
+        handler(el) {
+          const f = formData(el);
+          plan.setMeal(day, slot, {
+            kind,
+            label: f.label.trim(),
+            cost: calc.parseNum(f.cost),
+            kcal: calc.parseNum(f.kcal),
+          });
+          return true;
+        },
+      },
+    ],
+  });
+}
+
+function portionsSheet(m) {
+  const isCook = plan.isCooked(m);
+  return openSheet({
+    title: 'Portions',
+    body: `<form class="form" data-form>
+      <label class="field"><span>Portions mangées à ce repas</span><input name="portions" inputmode="decimal" value="${esc(calc.numInput(m.portions ?? 1))}"></label>
+      ${isCook ? `<label class="field"><span>Portions cuisinées</span><input name="cooked" inputmode="decimal" value="${esc(calc.numInput(m.cooked ?? 1))}"></label>
+      <p class="field-help">${m.slot === 'soir' ? 'Le soir, Gamelle te propose de garder ce qui dépasse pour le lendemain midi. Au-delà, pense au congélateur.' : 'Ce qui dépasse peut aller au congélateur.'}</p>` : ''}
+    </form>`,
+    actions: [
+      { label: 'Annuler', value: null },
+      {
+        label: 'Enregistrer', kind: 'primary',
+        handler(el) {
+          const f = formData(el);
+          const portions = calc.parseNum(f.portions) || 1;
+          const data = { ...m, portions };
+          delete data.id;
+          if (isCook) data.cooked = Math.max(portions, calc.parseNum(f.cooked) || portions);
+          plan.setMeal(m.day, m.slot, data);
+          return true;
+        },
+      },
+    ],
+  });
+}
+
+// Choix du jour et du repas, pour ce qu'on ajoute depuis une fiche
+function whenFields(slots, { help = '' } = {}) {
+  const today = calc.localDay();
+  const days = Array.from({ length: 10 }, (_, i) => calc.addDays(today, i));
+  return `<div class="field-row">
+    <label class="field"><span>Jour</span><select name="day">${days.map((d) => `<option value="${d}">${esc(calc.relDay(d))}${d !== today && calc.relDay(d) === calc.fmtDayName(d) ? '' : ` (${esc(calc.fmtShort(d))})`}</option>`).join('')}</select></label>
+    ${slots.length > 1 ? `<label class="field"><span>Repas</span><select name="slot">${slots.map((sl) => `<option value="${sl}">${esc(plan.SLOT_LABELS[sl])}</option>`).join('')}</select></label>` : `<input type="hidden" name="slot" value="${slots[0]}">`}
+  </div>${help ? `<p class="field-help">${help}</p>` : ''}`;
+}
+
+// Après avoir prévu un plat le soir en 2 portions : proposer la gamelle du lendemain.
+function offerLeftover(day, slot, ctx) {
+  if (slot !== 'soir') return;
+  const next = calc.addDays(day, 1);
+  if (!plan.leftoverOffer(next)) return;
+  toast('Garder la deuxième portion pour demain midi ?', {
+    action: 'Garder', duration: 7000,
+    onAction: () => { plan.keepLeftover(next); ctx?.render(); },
+  });
+}
+
+// ---------- Assiette composée ----------
+// Un féculent, une protéine, un légume et une sauce, tous facultatifs.
+export function compoSheet({ day = null, slot = null, cur = null, sauce = null } = {}) {
+  const s = calc.settings();
+  const pick = {};
+  for (const [id] of cur?.parts || []) {
+    const it = food.compoItem(id);
+    if (it) pick[it.group] = id;
+  }
+  let sauceId = cur ? cur.sauce || null : sauce;
+  const sauces = food.recipes().filter((r) => r.cat === 'sauce').sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const cookedDefault = cur?.cooked ?? (slot ? plan.defaultCooked(slot, s) : 2);
+  const chip = (group, [id, q]) => {
+    const ing = food.ingredient(id);
+    if (!ing) return '';
+    return `<button type="button" class="chip ${pick[group] === id ? 'is-on' : ''} ${have.has(id) ? 'has-dot' : ''}" data-part="${group}" data-id="${esc(id)}">${esc(ing.name)}<small>${esc(food.fmtQty(ing, q))}</small></button>`;
+  };
+  const parts = () => food.COMPO_ORDER.filter((g) => pick[g]).map((g) => [pick[g], food.compoItem(pick[g]).qty]);
+  return openSheet({
+    title: cur?.id ? 'Modifier l’assiette' : 'Composer une assiette',
+    wide: true,
+    body: `<form class="form compo" data-form>
+      ${day ? '' : whenFields(['soir', 'midi'])}
+      <p class="field-help">Choisis ce que tu veux, tout est facultatif. Quantités pour une portion. ${icon('check', 'dot-ico')} : tu en as à la maison.</p>
+      ${food.COMPO_ORDER.map((g) => `<fieldset class="compo-group"><legend>${esc(food.COMPO[g].label)}</legend>
+        <div class="chips tight">${food.COMPO[g].items.map((it) => chip(g, it)).join('')}</div></fieldset>`).join('')}
+      <fieldset class="compo-group"><legend>Sauce</legend>
+        <div class="chips tight">
+          <button type="button" class="chip ${!sauceId ? 'is-on' : ''}" data-sauce="">Sans sauce</button>
+          ${sauces.map((r) => `<button type="button" class="chip ${sauceId === r.id ? 'is-on' : ''}" data-sauce="${esc(r.id)}">${esc(r.name.replace(/^Sauce\s+/i, '').replace(/^./, (c) => c.toUpperCase()))}</button>`).join('')}
+        </div></fieldset>
+      <div class="compo-total" data-total></div>
+      <label class="field small-field"><span>Portions cuisinées</span><input name="cooked" inputmode="decimal" value="${esc(calc.numInput(cookedDefault))}"></label>
+    </form>`,
+    onMount(el) {
+      const total = () => {
+        const p = parts();
+        const box = el.querySelector('[data-total]');
+        if (!p.length && !sauceId) {
+          box.innerHTML = '<span class="fine">Choisis au moins un élément.</span>';
+          return;
+        }
+        const st = food.compoStats(p, sauceId);
+        box.innerHTML = `<span class="compo-name">${esc(food.compoTitle(p, sauceId))}</span>
+          <span class="compo-figs">${macros(st)} ${priceTag(st.cost)}</span>`;
+      };
+      el.addEventListener('click', (e) => {
+        const c = e.target.closest('[data-part]');
+        if (c) {
+          const g = c.dataset.part;
+          pick[g] = pick[g] === c.dataset.id ? null : c.dataset.id;
+          el.querySelectorAll(`[data-part="${g}"]`).forEach((b) => b.classList.toggle('is-on', b.dataset.id === pick[g]));
+          return total();
+        }
+        const sc = e.target.closest('[data-sauce]');
+        if (sc) {
+          sauceId = sc.dataset.sauce || null;
+          el.querySelectorAll('[data-sauce]').forEach((b) => b.classList.toggle('is-on', (b.dataset.sauce || null) === sauceId));
+          total();
+        }
+      });
+      total();
+    },
+    actions: [
+      { label: 'Annuler', value: null },
+      {
+        label: 'Enregistrer', kind: 'primary',
+        handler(el) {
+          const p = parts();
+          if (!p.length && !sauceId) {
+            toast('Choisis au moins un élément.', { kind: 'error' });
+            return false;
+          }
+          const f = formData(el);
+          const d = day || f.day;
+          const sl = slot || f.slot;
+          const cooked = Math.max(1, calc.parseNum(f.cooked) || 1);
+          plan.setMeal(d, sl, { kind: 'compo', parts: p, sauce: sauceId, portions: cur?.portions ?? 1, cooked });
+          return { day: d, slot: sl };
+        },
+      },
+    ],
+  });
+}
+
+// Comment préparer une assiette composée : cuisson de chaque élément puis la sauce.
+function prepSheet(m, ctx) {
+  const lines = [];
+  for (const [id] of m.parts || []) {
+    const it = food.compoItem(id);
+    if (it) lines.push({ t: it.how, s: it.s, label: food.ingredient(id)?.name || '' });
+  }
+  const sr = m.sauce && food.recipe(m.sauce);
+  return openSheet({
+    title: 'Préparer l’assiette',
+    wide: true,
+    body: `<p class="block-sub">Pour ${calc.fmt1(m.cooked ?? m.portions ?? 1)} portion${(m.cooked ?? 1) > 1 ? 's' : ''}. Lance le plus long en premier.</p>
+      <ol class="steps">${lines.sort((a, b) => (b.s || 0) - (a.s || 0)).map((l, i) => `<li><span class="step-n">${i + 1}</span><span class="step-t">${esc(l.t)}</span>${l.s ? `<button class="timer-chip" data-timer="${l.s}" data-label="${esc(l.label)}">${icon('timer')} ${esc(calc.fmtMinutes(l.s))}</button>` : ''}</li>`).join('')}</ol>
+      ${sr ? `<h3 class="block-title">${esc(sr.name)}</h3>
+        <ul class="ing-list">${sr.ing.map(([iid, q]) => { const l = food.ingLine(iid, (q * (m.cooked ?? 1)) / (sr.serves || 1)); return `<li><span class="ing-qty">${esc(l.qty)}</span><span class="ing-name">${esc(l.name)}</span></li>`; }).join('')}</ul>
+        <ol class="steps">${sr.steps.map((st, i) => `<li><span class="step-n">${i + 1}</span><span class="step-t">${esc(st.t)}</span>${st.s ? `<button class="timer-chip" data-timer="${st.s}" data-label="${esc(sr.name)}">${icon('timer')} ${esc(calc.fmtMinutes(st.s))}</button>` : ''}</li>`).join('')}</ol>
+        ${sr.tip ? `<p class="hint-text">${esc(sr.tip)}</p>` : ''}` : ''}`,
+    onMount(el) {
+      el.addEventListener('click', (e) => {
+        const t = e.target.closest('[data-timer]');
+        if (t) ctx.timers.start(Number(t.dataset.timer), t.dataset.label);
+      });
+    },
+  });
+}
+
+// ---------- Desserts ----------
+function dessertRow(r, { on = false, attr = '' } = {}) {
+  const st = food.recipeStats(r);
+  const whey = (r.tags || []).includes('whey');
+  return `<button type="button" class="list-row dessert-row ${on ? 'is-on' : ''}" ${attr}>
+    <span class="list-main"><span>${esc(r.name)}${whey ? ' <span class="tag mini">protéiné</span>' : ''}</span>
+      <small>${calc.fmt0(st.kcal)} kcal, ${calc.fmt0(st.p)} g de protéines</small></span>
+    ${priceTag(st.cost)}
+  </button>`;
+}
+
+export function dessertSheet(day, slot) {
+  const m = plan.getMeal(day, slot);
+  const s = calc.settings();
+  const simple = food.recipes().filter((r) => r.cat === 'dessert' && !food.isLot(r) && food.usable(r, s))
+    .sort((a, b) => food.recipeStats(a).kcal - food.recipeStats(b).kcal);
+  const lots = plan.bakesFor(day, m?.cake).map((b) => ({ b, r: food.recipe(b.recipe) })).filter((x) => x.r);
+  return openSheet({
+    title: 'Dessert',
+    wide: true,
+    body: `<button type="button" class="btn block" data-suggest>${icon('shuffle')} Me proposer un dessert</button>
+      ${lots.length ? `<h3 class="group-title">Dessert de la semaine</h3><div class="list">${lots.map(({ b, r }) => {
+        const left = b.parts - plan.bakeUsed(b.id) + (m?.cake === b.id ? 1 : 0);
+        const st = food.recipeStats(r);
+        const f = (r.serves || 1) / b.parts;
+        return `<button type="button" class="list-row dessert-row ${m?.cake === b.id ? 'is-on' : ''}" data-cake="${esc(b.id)}"><span class="list-main">${esc(r.name)}, une part<small>${left} part${left > 1 ? 's' : ''} restante${left > 1 ? 's' : ''}, ${calc.fmt0(st.kcal * f)} kcal</small></span>${priceTag(st.cost * f)}</button>`;
+      }).join('')}</div>` : ''}
+      <h3 class="group-title">Desserts simples</h3>
+      <div class="list">${simple.map((r) => dessertRow(r, { on: m?.dessert === r.id, attr: `data-dessert="${esc(r.id)}"` })).join('')}</div>
+      ${m?.dessert || m?.cake ? '<button type="button" class="btn ghost block" data-none>Pas de dessert</button>' : ''}`,
+    onMount(el, api) {
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('[data-suggest]')) {
+          const r = plan.suggestDessert(day, slot);
+          if (r) {
+            plan.setDessert(day, slot, { dessert: r.id });
+            toast(`Dessert : ${r.name}`);
+          }
+          return api.close(true);
+        }
+        const d = e.target.closest('[data-dessert]');
+        if (d) {
+          plan.setDessert(day, slot, { dessert: d.dataset.dessert });
+          return api.close(true);
+        }
+        const c = e.target.closest('[data-cake]');
+        if (c) {
+          plan.setDessert(day, slot, { cake: c.dataset.cake });
+          return api.close(true);
+        }
+        if (e.target.closest('[data-none]')) {
+          plan.setDessert(day, slot, {});
+          api.close(true);
+        }
+      });
+    },
+  });
+}
+
+// Dessert de la semaine : préparé une fois, mangé en parts.
+export async function bakeSheet(r, ctx, { day = null } = {}) {
+  const res = await openSheet({
+    title: r.name,
+    body: `<form class="form" data-form>
+      <p>Préparé une fois, mangé en parts dans la semaine. Les ingrédients passent une seule fois dans les courses, le prix et les calories sont comptés par part.</p>
+      ${day ? `<input type="hidden" name="day" value="${day}">` : whenFields(['soir'], {})}
+      <label class="field"><span>Nombre de parts</span><input name="parts" inputmode="numeric" value="${esc(r.serves)}"></label>
+      <label class="switch"><input type="checkbox" name="each" checked><span>Une part en dessert chaque soir<small>Sur les soirs déjà prévus à partir de ce jour. Tu peux toujours en changer.</small></span></label>
+    </form>`,
+    actions: [
+      { label: 'Annuler', value: null },
+      { label: 'Ajouter', kind: 'primary', handler: (el) => formData(el) },
+    ],
+  });
+  if (!res) return false;
+  const parts = Math.max(1, Math.min(30, Math.round(calc.parseNum(res.parts) || r.serves)));
+  plan.addBake(r.id, res.day, parts, { eachEvening: res.each });
+  toast(`${r.name} ajouté, ${parts} parts.`, { action: 'Voir', onAction: () => ctx.go(`/semaine/${calc.weekStart(res.day)}`) });
+  return true;
+}
+
+// ---------- Actions sur un créneau ----------
+export async function mealActions(day, slot, ctx) {
+  const m = plan.getMeal(day, slot);
+  const s = calc.settings();
+  const label = `${plan.SLOT_LABELS[slot]}, ${calc.relDay(day).toLowerCase()}`;
+  const main = slot === 'midi' || slot === 'soir';
+  const plate = m && (m.kind === 'compo' || (m.kind === 'reste' && !m.recipe));
+  const items = [];
+  if (m && (m.kind === 'recette' || m.kind === 'reste') && food.recipe(m.recipe)) {
+    items.push({ label: 'Voir la recette', value: 'open', icon: 'recettes' });
+  }
+  if (plate) items.push({ label: 'Comment la préparer', value: 'prep', icon: 'pot' });
+  if (m && m.kind === 'recette' && food.recipe(m.recipe)?.steps.length) items.push({ label: 'Cuisiner maintenant', value: 'cook', icon: 'pot' });
+  if (plan.isCooked(m)) items.push({ label: m.done ? 'Annuler « cuisiné »' : 'Marquer comme cuisiné', value: 'done', icon: 'check' });
+  if (slot === 'midi' && !(m && m.kind === 'reste')) {
+    const prev = plan.getMeal(calc.addDays(day, -1), 'soir');
+    if (plan.isCooked(prev)) items.push({ label: `Gamelle : ${plan.mealTitle(prev)}`, value: 'leftover', icon: 'box' });
+  }
+  if (m && m.kind === 'compo') items.push({ label: 'Modifier l’assiette', value: 'compo', icon: 'edit' });
+  items.push({ label: m ? 'Choisir une autre recette' : 'Choisir une recette', value: 'pick', icon: 'search' });
+  if (main && !(m && m.kind === 'compo')) items.push({ label: 'Composer une assiette', value: 'compo', icon: 'fork' });
+  if (main) items.push({ label: 'Avec ce que j’ai', value: 'what', icon: 'box' });
+  items.push({ label: 'Me proposer une recette', value: 'suggest', icon: 'shuffle' });
+  if (m && main) items.push({ label: m.dessert || m.cake ? 'Changer le dessert' : 'Ajouter un dessert', value: 'dessert', icon: 'add' });
+  if (m && (plan.isCooked(m) || m.kind === 'reste')) items.push({ label: 'Portions', value: 'portions', icon: 'sliders' });
+  items.push({ label: 'Commande (Uber Eats…)', value: 'uber', icon: 'bike' });
+  items.push({ label: 'Repas libre (resto, invité…)', value: 'libre', icon: 'fork' });
+  if (m) items.push({ label: 'Retirer ce repas', value: 'remove', icon: 'trash', danger: true });
+
+  const choice = await menuSheet(label, items);
+  if (!choice) return;
+  switch (choice) {
+    case 'open': ctx.go(`/recettes/${m.recipe}`); break;
+    case 'prep': await prepSheet(m, ctx); break;
+    case 'cook': ctx.go(`/cuisine/${m.recipe}?p=${m.cooked ?? 1}&meal=${encodeURIComponent(m.id)}${m.mc ? '&mc=1' : ''}`); break;
+    case 'done':
+      plan.setDone(m, !m.done);
+      toast(m.done ? 'Repas remis « à cuisiner ».' : 'Cuisiné. Les réserves ont été mises à jour.');
+      break;
+    case 'pick': {
+      const cat = slot === 'petitdej' ? 'petitdej' : slot === 'collation' ? 'collation' : 'diner';
+      const id = await pickRecipe({ cat, cats: main ? ['diner'] : [cat] });
+      if (id) {
+        plan.setMeal(day, slot, { kind: 'recette', recipe: id, portions: 1, mc: s.preferMc && !!food.recipe(id)?.mc });
+        offerLeftover(day, slot, ctx);
+      }
+      break;
+    }
+    case 'compo': {
+      const res = await compoSheet({ day, slot, cur: m && m.kind === 'compo' ? m : null });
+      if (res) offerLeftover(day, slot, ctx);
+      break;
+    }
+    case 'what': ctx.go(`/quoi?day=${day}&slot=${slot}`); break;
+    case 'suggest': {
+      const r = plan.suggest(day, slot, { exclude: m?.recipe ? [m.recipe] : [] });
+      if (r) {
+        plan.setMeal(day, slot, { kind: 'recette', recipe: r.id, portions: 1, mc: s.preferMc && !!r.mc });
+        toast(`Proposé : ${r.name}`);
+        offerLeftover(day, slot, ctx);
+      } else toast('Aucune autre recette ne convient à tes réglages.');
+      break;
+    }
+    case 'leftover': plan.keepLeftover(day); break;
+    case 'dessert': await dessertSheet(day, slot); break;
+    case 'portions': await portionsSheet(m); break;
+    case 'uber':
+    case 'libre': await outsideSheet(day, slot, choice, m && m.kind === choice ? m : null); break;
+    case 'remove': plan.removeMeal(day, slot); break;
+    default: break;
+  }
+}
+
+// Ajouter une recette au planning depuis sa fiche
+export async function addToPlan(r, ctx) {
+  if (food.isLot(r)) return bakeSheet(r, ctx);
+  if (r.cat === 'sauce') {
+    const res = await compoSheet({ sauce: r.id });
+    if (res) {
+      toast(`Assiette ajoutée : ${plan.SLOT_LABELS[res.slot].toLowerCase()}, ${calc.relDay(res.day).toLowerCase()}.`, {
+        action: 'Voir', onAction: () => ctx.go(`/semaine/${calc.weekStart(res.day)}`),
+      });
+    }
+    return;
+  }
+  const isDessert = r.cat === 'dessert';
+  const slots = isDessert ? ['soir', 'midi'] : r.cat === 'petitdej' ? ['petitdej'] : r.cat === 'collation' ? ['collation'] : ['soir', 'midi'];
+  const res = await openSheet({
+    title: isDessert ? 'Ajouter en dessert' : 'Ajouter au planning',
+    body: `<form class="form" data-form>
+      ${whenFields(slots, { help: isDessert ? 'Le dessert s’ajoute au repas déjà prévu à ce moment-là.' : r.cat === 'diner' ? 'Le soir, la recette est prévue en 2 portions. Gamelle te propose ensuite de garder la seconde pour le lendemain midi.' : '' })}
+    </form>`,
+    actions: [
+      { label: 'Annuler', value: null },
+      { label: 'Ajouter', kind: 'primary', handler: (el) => formData(el) },
+    ],
+  });
+  if (!res) return;
+  const cur = plan.getMeal(res.day, res.slot);
+  if (isDessert) {
+    if (!cur) {
+      toast('Aucun repas prévu à ce moment-là. Prévois d’abord le repas, puis ajoute le dessert.', { kind: 'error', duration: 5000 });
+      return;
+    }
+    plan.setDessert(res.day, res.slot, { dessert: r.id });
+  } else {
+    plan.setMeal(res.day, res.slot, { kind: 'recette', recipe: r.id, portions: 1, mc: calc.settings().preferMc && !!r.mc });
+  }
+  toast(`${isDessert ? 'Dessert ajouté' : cur ? 'Remplacé' : 'Ajouté'} : ${plan.SLOT_LABELS[res.slot].toLowerCase()}, ${calc.relDay(res.day).toLowerCase()}.`, {
+    action: 'Voir', onAction: () => ctx.go(`/semaine/${calc.weekStart(res.day)}`),
+  });
+  if (!isDessert) setTimeout(() => offerLeftover(res.day, res.slot, ctx), 400);
+}
+
+export function emptyIcon(name) {
+  return `<span class="empty-icon">${icon(name)}</span>`;
+}
