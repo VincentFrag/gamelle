@@ -4,7 +4,7 @@
 // ramenées à quelques nombres et un nom, puis contrôlées comme toute donnée entrante.
 import { num } from './clean.js';
 
-const FIELDS = 'code,product_name,product_name_fr,generic_name_fr,brands,quantity,nutriments,categories_tags';
+const FIELDS = 'code,product_name,product_name_fr,generic_name_fr,brands,quantity,nutriments,categories_tags,serving_size,serving_quantity';
 const TIMEOUT = 9000;
 
 async function getJson(url) {
@@ -57,11 +57,16 @@ export function toIngredient(p) {
   if (!name) return null;
   const n = nutrition(p.nutriments);
   if (n.kcal == null && n.p == null) return null;
+  // Portion indiquée sur le paquet (« 1 barre (43 g) »)
+  const sq = Number(p.serving_quantity);
+  const serving = Number.isFinite(sq) && sq > 0 && sq <= 1000 ? sq : null;
   return {
     code,
     name,
     brand: text(p.brands, 40).split(',')[0].trim(),
     quantity: text(p.quantity, 30),
+    serving: serving ? Math.round(serving * 10) / 10 : null,
+    servingLabel: text(p.serving_size, 40),
     rayon: rayonOf(p.categories_tags),
     ...n,
   };
@@ -80,17 +85,23 @@ export async function search(q) {
       if (it && !seen.has(key)) { seen.add(key); out.push(it); }
     }
   };
+  let failed = 0;
   try {
     const u = new URL('https://search.openfoodfacts.org/search');
     u.search = new URLSearchParams({ q: query, langs: 'fr', page_size: '24', fields: FIELDS }).toString();
     const j = await getJson(u.href);
     add(j.hits);
-  } catch { /* on passe au moteur historique */ }
+  } catch { failed++; /* on passe au moteur historique */ }
   if (out.length < 5) {
-    const u = new URL('https://world.openfoodfacts.org/cgi/search.pl');
-    u.search = new URLSearchParams({ search_terms: query, search_simple: '1', action: 'process', json: '1', page_size: '24', lc: 'fr', cc: 'fr', fields: FIELDS }).toString();
-    const j = await getJson(u.href);
-    add(j.products);
+    try {
+      const u = new URL('https://world.openfoodfacts.org/cgi/search.pl');
+      u.search = new URLSearchParams({ search_terms: query, search_simple: '1', action: 'process', json: '1', page_size: '24', lc: 'fr', cc: 'fr', fields: FIELDS }).toString();
+      const j = await getJson(u.href);
+      add(j.products);
+    } catch (e) {
+      // les deux moteurs injoignables : on le dit ; sinon on garde ce qu'on a trouvé
+      if (failed && !out.length) throw e;
+    }
   }
   return out.slice(0, 24);
 }

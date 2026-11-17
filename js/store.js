@@ -159,7 +159,7 @@ export function dayLog(day) {
 
 export function patchDayLog(day, partial) {
   const next = { ...dayLog(day), ...partial };
-  for (const k of Object.keys(next)) if (next[k] == null || next[k] === false || next[k] === 0) delete next[k];
+  for (const k of Object.keys(next)) if (next[k] == null || next[k] === false || next[k] === 0 || (Array.isArray(next[k]) && !next[k].length)) delete next[k];
   if (!Object.keys(next).length) {
     remove('weight', day);
     return true;

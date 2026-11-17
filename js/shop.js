@@ -125,6 +125,10 @@ export function compute(start, range = 'today') {
       if (l.length) preps++;
       for (const [id, q, label] of l) add(id, q, label);
     }
+    if (m.dessertParts && !m.done) {
+      desserts++;
+      for (const [id, q] of m.dessertParts) add(id, q * (m.portions ?? 1), 'desserts');
+    }
     if (m.dessert && !m.done) {
       const r = food.recipe(m.dessert);
       if (r) {

@@ -4,6 +4,7 @@ import * as store from './store.js';
 import * as calc from './calc.js';
 import * as food from './food.js';
 import * as habits from './habits.js';
+import * as portions from './portions.js';
 
 export const SLOT_ORDER = ['petitdej', 'midi', 'collation', 'soir'];
 export const SLOT_LABELS = { petitdej: 'Petit-déj', midi: 'Midi', collation: 'Collation', soir: 'Soir' };
@@ -32,7 +33,7 @@ export function defaultCooked(slot, s = calc.settings()) {
 // Repas qu'on cuisine (recette ou assiette composée)
 export const isCooked = (m) => Boolean(m && (m.kind === 'recette' || m.kind === 'compo'));
 // Repas dont le contenu est une assiette composée (ou sa gamelle)
-const isPlate = (m) => m.kind === 'compo' || (m.kind === 'reste' && !m.recipe && (m.parts || m.sauce));
+const isPlate = (m) => m.kind === 'compo' || (m.kind === 'reste' && !m.recipe && (m.parts || m.sauce || m.sauceParts));
 
 // ---------- Valeurs d'un repas ----------
 function scaled(st, k, home = true) {
@@ -41,7 +42,7 @@ function scaled(st, k, home = true) {
 
 function baseStats(m, s) {
   const portions = m.portions ?? 1;
-  if (isPlate(m)) return scaled(food.compoStats(m.parts, m.sauce), portions);
+  if (isPlate(m)) return scaled(food.compoStats(m.parts, m.sauce, m.sauceParts), portions);
   if (m.kind === 'recette' || m.kind === 'reste') {
     const st = food.recipeStats(food.recipe(m.recipe));
     if (!st) return { kcal: 0, p: 0, c: 0, f: 0, cost: 0, home: true };
@@ -65,6 +66,10 @@ export function dessertOf(m) {
     if (!r) return null;
     return { name: r.name, recipe: r, ...scaled(food.recipeStats(r), 1) };
   }
+  if (m.dessertParts && m.dessertParts.length) {
+    const name = m.dessertParts.map(([id, q]) => portions.itemLabel(id, q)).filter(Boolean).join(', ');
+    return { name: name.charAt(0).toUpperCase() + name.slice(1), parts: m.dessertParts, ...scaled(food.sumOf(m.dessertParts), 1) };
+  }
   return null;
 }
 
@@ -80,7 +85,7 @@ export function mealStats(m, s = calc.settings()) {
 }
 
 export function mealTitle(m) {
-  if (isPlate(m)) return food.compoTitle(m.parts, m.sauce);
+  if (isPlate(m)) return food.compoTitle(m.parts, m.sauce, m.sauceParts);
   if (m.kind === 'recette' || m.kind === 'reste') return food.recipe(m.recipe)?.name || 'Recette supprimée';
   if (m.kind === 'uber') return m.label || 'Commande Uber Eats';
   return m.label || 'Repas libre';
@@ -99,17 +104,38 @@ export function sumStats(list) {
 }
 
 // Shakers de whey notés dans le journal du jour : comptés dans les calories et protéines.
+// Craquages notés dans le journal du jour, comptés aussi.
 function shakeTotals(from, to, s) {
   const one = habits.shakeStats(s);
   let n = 0;
-  for (const r of store.all('weight')) if (r.id >= from && r.id <= to) n += r.data.shakes || 0;
-  return { n, kcal: one.kcal * n, p: one.p * n, c: one.c * n, f: one.f * n, cost: one.cost * n };
+  const snacks = [];
+  for (const r of store.all('weight')) {
+    if (r.id < from || r.id > to) continue;
+    n += r.data.shakes || 0;
+    if (r.data.snacks) snacks.push(...r.data.snacks);
+  }
+  const sn = food.sumOf(snacks);
+  return {
+    n, snacks: snacks.length, snackKcal: sn.kcal,
+    kcal: one.kcal * n + sn.kcal, p: one.p * n + sn.p, c: one.c * n + sn.c, f: one.f * n + sn.f, cost: one.cost * n + sn.cost,
+  };
 }
 
 function addShakes(st, sh) {
   st.kcal += sh.kcal; st.p += sh.p; st.c += sh.c; st.f += sh.f; st.cost += sh.cost;
   st.shakes = sh.n;
+  st.snacks = sh.snacks;
+  st.snackKcal = sh.snackKcal;
   return st;
+}
+
+// ---------- Craquages ----------
+export function snacksOf(day) {
+  return store.dayLog(day).snacks || [];
+}
+
+export function setSnacks(day, list) {
+  return store.patchDayLog(day, { snacks: list.filter(([, q]) => q > 0).slice(0, 12) });
 }
 
 export function dayStats(day) {
@@ -129,6 +155,7 @@ export function cookList(m) {
     for (const [id, q] of m.parts || []) out.push([id, q * cooked, label]);
     const sr = m.sauce && food.recipe(m.sauce);
     if (sr) for (const [id, q] of sr.ing) out.push([id, (q * cooked) / (sr.serves || 1), sr.name]);
+    for (const [id, q] of m.sauceParts || []) out.push([id, q * cooked, 'Sauce maison']);
   }
   return out;
 }
@@ -144,13 +171,14 @@ export function setMeal(day, slot, data) {
     const prev = getMeal(day, slot);
     const meal = { ...data, day, slot };
     delete meal.id;
-    if (prev && !('dessert' in data) && !('cake' in data)) {
+    if (prev && !('dessert' in data) && !('cake' in data) && !('dessertParts' in data)) {
       if (prev.dessert) meal.dessert = prev.dessert;
+      if (prev.dessertParts) meal.dessertParts = prev.dessertParts;
       if (prev.cake) meal.cake = prev.cake;
     }
     if (isCooked(meal) && meal.cooked == null) meal.cooked = defaultCooked(slot, s);
     if (!isCooked(meal)) delete meal.cooked;
-    if (meal.kind !== 'compo' && meal.kind !== 'reste') { delete meal.parts; delete meal.sauce; }
+    if (meal.kind !== 'compo' && meal.kind !== 'reste') { delete meal.parts; delete meal.sauce; delete meal.sauceParts; }
     b.put('meal', id, meal);
     syncLeftover(b, day, slot, meal);
   });
@@ -166,7 +194,7 @@ function syncLeftover(b, day, slot, meal) {
   const extra = isCooked(meal) ? (meal.cooked ?? 1) - (meal.portions ?? 1) : 0;
   if (extra >= 0.5) {
     const { id: _i, ...cur } = lunch;
-    b.put('meal', mealId(next, 'midi'), { ...cur, recipe: meal.recipe, parts: meal.parts, sauce: meal.sauce, portions: Math.min(extra, lunch.portions ?? 1) });
+    b.put('meal', mealId(next, 'midi'), { ...cur, recipe: meal.recipe, parts: meal.parts, sauce: meal.sauce, sauceParts: meal.sauceParts, portions: Math.min(extra, lunch.portions ?? 1) });
   } else {
     b.remove('meal', mealId(next, 'midi'));
   }
@@ -191,8 +219,8 @@ export function keepLeftover(day) {
     const cooked = Math.max(prev.cooked ?? 1, (prev.portions ?? 1) + 1);
     if (cooked !== prev.cooked) b.patch('meal', prev.id, { cooked });
     b.put('meal', mealId(day, 'midi'), {
-      day, slot: 'midi', kind: 'reste', recipe: prev.recipe, parts: prev.parts, sauce: prev.sauce,
-      from: prev.id, portions: 1, dessert: cur?.dessert, cake: cur?.cake,
+      day, slot: 'midi', kind: 'reste', recipe: prev.recipe, parts: prev.parts, sauce: prev.sauce, sauceParts: prev.sauceParts,
+      from: prev.id, portions: 1, dessert: cur?.dessert, cake: cur?.cake, dessertParts: cur?.dessertParts,
     });
   });
   return true;
@@ -228,14 +256,16 @@ export function removeMeal(day, slot) {
 }
 
 // ---------- Desserts ----------
-export function setDessert(day, slot, { dessert = null, cake = null } = {}) {
+export function setDessert(day, slot, { dessert = null, cake = null, parts = null } = {}) {
   const m = getMeal(day, slot);
   if (!m) return;
   const { id: _i, ...data } = m;
   delete data.dessert;
   delete data.cake;
+  delete data.dessertParts;
   if (dessert) data.dessert = dessert;
   if (cake) data.cake = cake;
+  if (parts && parts.length) data.dessertParts = parts;
   store.put('meal', m.id, data);
 }
 
@@ -246,7 +276,7 @@ export function suggestDessert(day, slot) {
   const tg = calc.targets();
   const pool = food.recipes().filter((r) => r.cat === 'dessert' && !food.isLot(r) && food.usable(r, s));
   if (!pool.length) return null;
-  const meals = mealsOfDay(day).map((m) => (m.slot === slot ? { ...m, dessert: null, cake: null } : m));
+  const meals = mealsOfDay(day).map((m) => (m.slot === slot ? { ...m, dessert: null, cake: null, dessertParts: null } : m));
   const ds = sumStats(meals.map((m) => mealStats(m, s)));
   const protGap = tg.ready ? tg.p - ds.p : 0;
   const kcalLeft = tg.ready ? tg.kcal - ds.kcal : 400;
@@ -559,8 +589,9 @@ export function generate(start, mode = 'fill') {
     for (const [id, m] of next) {
       const cur = current.get(id);
       // le dessert choisi pour ce créneau reste en place quand le plat change
-      if (cur && !m.dessert && !m.cake) {
+      if (cur && !m.dessert && !m.cake && !m.dessertParts) {
         if (cur.dessert) m.dessert = cur.dessert;
+        if (cur.dessertParts) m.dessertParts = cur.dessertParts;
         if (cur.cake) m.cake = cur.cake;
       }
       if (cur && JSON.stringify({ ...cur, id: undefined }) === JSON.stringify({ ...m, id: undefined })) continue;

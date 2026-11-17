@@ -1099,3 +1099,26 @@ body[data-tab='plus'] { --sec: var(--sec-plus); }
 .flemme-empty { padding: 14px; border: 1px dashed var(--line); border-radius: var(--radius); }
 .flemme-empty p { margin: 0 0 10px; color: var(--ink-2); }
 .flemme-order { margin-top: 18px; }
+
+/* 1.3 : desserts libres, sauce à l'œil, craquages */
+.mrows { display: grid; gap: 6px; margin-top: 10px; }
+.mrow { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.mrow-name { flex: 1; min-width: 0; display: flex; flex-direction: column; font-weight: 600; font-size: 15px; }
+.mrow-name small { font-weight: 400; color: var(--ink-2); font-size: 12.5px; }
+.mstep { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.mstep b { min-width: 96px; text-align: center; font-size: 14.5px; font-weight: 700; white-space: nowrap; }
+.mstep .icon-btn.small { font-size: 20px; font-weight: 600; line-height: 1; }
+@media (max-width: 400px) { .mstep b { min-width: 80px; font-size: 13.5px; } }
+.free-dessert { padding: 12px; border-radius: 14px; background: color-mix(in srgb, var(--c-dessert) 7%, var(--surface)); border: 1px solid color-mix(in srgb, var(--c-dessert) 25%, var(--line)); margin-bottom: 10px; }
+.free-dessert .group-title { margin-top: 0; color: var(--c-dessert); }
+.free-dessert .btn.block { margin-top: 10px; }
+.chip.is-crack, .link-btn.is-crack { color: var(--c-dessert); border-color: color-mix(in srgb, var(--c-dessert) 45%, var(--line)); }
+.link-btn.is-crack .icon { color: var(--c-dessert); }
+.pill-btn.is-crack .icon { color: var(--c-dessert); }
+.pill-btn.is-flemme .icon { color: var(--sl-petitdej); }
+.meal.is-crack { --slot: var(--c-dessert); }
+.meal.is-crack .meal-ico { color: var(--c-dessert); }
+.sauce-mine { margin-top: 10px; padding: 10px; border-radius: 12px; background: color-mix(in srgb, var(--c-dessert) 6%, var(--surface-2)); }
+.sauce-mine .field-help { margin-top: 0; }
+.chip-mine { font-weight: 700; }
+.btn.block + .field-help { margin-top: 8px; }

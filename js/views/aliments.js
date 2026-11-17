@@ -132,6 +132,79 @@ export async function offSheet(initial = '') {
   });
 }
 
+// ---------- Produit du commerce (craquage) ----------
+// Recherche Open Food Facts avec les macros affichées par portion quand le paquet l'indique.
+// Le produit choisi est enregistré dans tes aliments (une seule fois) : compté par portion
+// s'il y a une portion indiquée, sinon au poids. Renvoie { id, qty } ou null.
+export function saveProduct(it) {
+  const src = it.code ? `Open Food Facts ${it.code}` : null;
+  const existing = src && food.ingredients().find((i) => i.custom && i.src === src);
+  if (existing) return existing.id;
+  const id = `x-${store.uuid().slice(0, 8)}`;
+  const name = it.brand && !food.norm(it.name).includes(food.norm(it.brand)) ? `${it.name} (${it.brand})` : it.name;
+  store.put('ingredient', id, {
+    custom: true, name: name.slice(0, 80), rayon: it.rayon || 'epicerie',
+    unit: it.serving ? 'pc' : 'g', pw: it.serving || null,
+    kcal: it.kcal || 0, p: it.p || 0, c: it.c || 0, f: it.f || 0, fib: it.fib || 0,
+    price: 0, staple: false, src: src || 'Open Food Facts',
+  });
+  return id;
+}
+
+function perPortion(it) {
+  const g = it.serving || 100;
+  const k = g / 100;
+  const what = it.serving ? (it.servingLabel ? `${it.servingLabel.charAt(0).toUpperCase()}${it.servingLabel.slice(1)}` : `1 portion (${calc.fmt0(g)} g)`) : 'Pour 100 g';
+  return `${what} : ${it.kcal != null ? `${calc.fmt0(it.kcal * k)} kcal` : 'kcal ?'}, ${calc.fmt1((it.p ?? 0) * k)} g prot., ${calc.fmt1((it.c ?? 0) * k)} g gluc., ${calc.fmt1((it.f ?? 0) * k)} g lip.`;
+}
+
+export async function productSheet({ title = 'Craquage', recent = [] } = {}) {
+  let hits = [];
+  const mine = recent.map((id) => food.ingredient(id)).filter(Boolean);
+  const res = await openSheet({
+    title,
+    wide: true,
+    body: `<form class="off-form" data-search>
+        <label class="search"><span class="sr-only">Produit ou code-barres</span><input type="search" name="q" placeholder="Ex. : Kinder Bueno, Pringles, Magnum" autocomplete="off" enterkeyhint="search" autofocus></label>
+        <button class="btn primary" type="submit">${icon('search')} Chercher</button>
+      </form>
+      <p class="field-help">Cherche un produit du commerce par son nom ou son code-barres : calories et macros viennent d’Open Food Facts, par portion quand le paquet l’indique.</p>
+      ${mine.length ? `<h3 class="group-title">Tes craquages récents</h3><div class="list off-list">${mine.map((i) => `<button type="button" class="list-row" data-mine="${esc(i.id)}"><span class="list-main">${esc(i.name)}<small>${i.unit === 'pc' && i.pw ? `1 portion (${calc.fmt0(i.pw)} g) : ${calc.fmt0((i.kcal * i.pw) / 100)} kcal` : `${calc.fmt0(i.kcal)} kcal pour 100 g`}</small></span>${icon('add')}</button>`).join('')}</div>` : ''}
+      <div data-off-results></div>`,
+    onMount(el, api) {
+      const box = el.querySelector('[data-off-results]');
+      el.querySelector('[data-search]').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const q = e.target.q.value.trim();
+        if (q.length < 2) return;
+        box.innerHTML = '<p class="empty pad">Recherche…</p>';
+        try {
+          const digits = q.replace(/\s/g, '');
+          if (/^\d{8,14}$/.test(digits)) {
+            const it = await off.byCode(digits);
+            hits = it ? [it] : [];
+          } else hits = await off.search(q);
+          box.innerHTML = hits.length
+            ? `<h3 class="group-title">Résultats</h3><div class="list off-list">${hits.map((it, i) => `<button type="button" class="list-row" data-hit="${i}"><span class="list-main">${esc(it.name)}${it.brand ? `<small>${esc(it.brand)}${it.quantity ? `, ${esc(it.quantity)}` : ''}</small>` : ''}<small>${esc(perPortion(it))}</small></span>${icon('add')}</button>`).join('')}</div><p class="fine">Données Open Food Facts, sous licence ODbL.</p>`
+            : '<p class="empty pad">Aucun produit trouvé. Essaie un nom plus court, ou la marque seule.</p>';
+        } catch {
+          box.innerHTML = '<p class="empty pad">Open Food Facts ne répond pas. Vérifie ta connexion.</p>';
+        }
+      });
+      el.addEventListener('click', (e) => {
+        const h = e.target.closest('[data-hit]');
+        if (h) return api.close({ hit: hits[Number(h.dataset.hit)] });
+        const m = e.target.closest('[data-mine]');
+        if (m) api.close({ id: m.dataset.mine });
+      });
+    },
+  });
+  if (!res) return null;
+  const id = res.id || saveProduct(res.hit);
+  const ing = food.ingredient(id);
+  return { id, qty: ing.unit === 'pc' ? 1 : 30 };
+}
+
 // ---------- Créer ou modifier un aliment perso ----------
 export async function editIngredient(id, prefill = {}) {
   const cur = id ? food.ingredient(id) : { ...prefill };

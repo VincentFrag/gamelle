@@ -216,18 +216,30 @@ export function sumOf(pairs) {
 }
 
 // Valeurs d'une assiette composée, pour 1 portion.
-export function compoStats(parts, sauceId) {
-  const out = sumOf(parts);
+export function compoStats(parts, sauceId, sauceParts = null) {
+  const out = sumOf([...(parts || []), ...(sauceParts || [])]);
   const sauce = sauceId ? recipeStats(recipe(sauceId)) : null;
   if (sauce) for (const k of ['kcal', 'p', 'c', 'f', 'fib', 'cost']) out[k] += sauce[k];
   return out;
 }
 
-export function compoTitle(parts, sauceId) {
+// « crème, moutarde et miso »
+export function listNames(ids, max = 3) {
+  const names = ids.map((id) => ingredient(id)?.name).filter(Boolean).map((n) => n.charAt(0).toLowerCase() + n.slice(1));
+  const shown = names.slice(0, max);
+  if (names.length > max) return `${shown.join(', ')}…`;
+  return shown.length > 1 ? `${shown.slice(0, -1).join(', ')} et ${shown[shown.length - 1]}` : shown[0] || '';
+}
+
+export function compoTitle(parts, sauceId, sauceParts = null) {
   const names = (parts || []).map(([id]) => ingredient(id)?.name).filter(Boolean)
     .map((n, i) => (i ? n.charAt(0).toLowerCase() + n.slice(1) : n));
   const sauce = sauceId ? recipe(sauceId) : null;
   const base = names.join(', ');
+  if (!sauce && sauceParts && sauceParts.length) {
+    const sp = `sauce ${listNames(sauceParts.map(([id]) => id))}`;
+    return base ? `${base}, ${sp}` : sp.charAt(0).toUpperCase() + sp.slice(1);
+  }
   if (!sauce) return base || 'Assiette composée';
   const sname = sauce.name.replace(/^Sauce\s+/i, '');
   return base ? `${base}, sauce ${sname.charAt(0).toLowerCase()}${sname.slice(1)}` : sauce.name;
@@ -237,7 +249,7 @@ export function compoTitle(parts, sauceId) {
 const nf = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
 const FRACTIONS = [[0.25, '¼'], [0.5, '½'], [0.75, '¾'], [0.33, '⅓'], [0.67, '⅔']];
 
-function fmtCount(n) {
+export function fmtCount(n) {
   const whole = Math.floor(n + 0.001);
   const rest = n - whole;
   if (rest < 0.05) return String(whole);

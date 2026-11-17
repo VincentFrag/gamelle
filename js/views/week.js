@@ -4,7 +4,7 @@ import * as food from '../food.js';
 import * as plan from '../plan.js';
 import { esc, icon, menuSheet, confirmSheet, toast } from '../ui.js';
 import { priceTag, mealActions, gauge, pickRecipe, bakeSheet } from './common.js';
-import { todayCard, todayClick } from './today.js';
+import { todayCard, todayClick, craquageSheet, snackRow } from './today.js';
 
 function mealSub(m) {
   const r = food.recipe(m.recipe);
@@ -172,8 +172,8 @@ export function renderWeek(view, ctx, startParam) {
             ${ds.n ? `<span class="day-total"><span><b>${calc.fmt0(ds.kcal)}</b> kcal</span>${priceTag(ds.cost, { cls: 'is-plain' })}</span>` : ''}
           </header>
           ${tg.ready && ds.n ? gauge(ds.kcal, tg.kcal, 'Calories', 'mini') : ''}
-          <div class="meals">${slots.map((slot) => mealRow(d, slot, s)).join('')}</div>
-          ${extra.length ? `<div class="day-extra">${extra.map((sl) => `<button class="link-btn" data-slot="${sl}" data-day="${d}">${icon('add')} ${esc(plan.SLOT_LABELS[sl])}</button>`).join('')}</div>` : ''}
+          <div class="meals">${slots.map((slot) => mealRow(d, slot, s)).join('')}${snackRow(d)}</div>
+          <div class="day-extra">${extra.map((sl) => `<button class="link-btn" data-slot="${sl}" data-day="${d}">${icon('add')} ${esc(plan.SLOT_LABELS[sl])}</button>`).join('')}${plan.snacksOf(d).length ? '' : `<button class="link-btn is-crack" data-crack-day="${d}">${icon('spark')} Craquage</button>`}</div>
         </section>`;
       }).join('')}
     </div>
@@ -196,6 +196,11 @@ export function renderWeek(view, ctx, startParam) {
 
   view.addEventListener('click', async (e) => {
     if (await todayClick(e, ctx)) return;
+    const cr = e.target.closest('[data-crack-day]');
+    if (cr) {
+      if (await craquageSheet(cr.dataset.crackDay)) ctx.render();
+      return;
+    }
     if (e.target.closest('[data-serre-off]')) {
       calc.saveSettings({ serre: false });
       toast('Petit budget arrêté. Les prochaines propositions reprennent leur rythme habituel.');

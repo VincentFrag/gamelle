@@ -81,7 +81,7 @@ export function renderBilan(view, ctx) {
       ${filled.length ? `
         ${tg.ready ? gauge(avgKcal, tg.kcal, 'Calories par jour, en moyenne') + gauge(avgP, tg.p, 'Protéines par jour (g), en moyenne', 'prot') : `<p class="block-sub">Moyenne : ${calc.fmt0(avgKcal)} kcal et ${calc.fmt0(avgP)} g de protéines par jour. <a href="#/profil">Renseigne ton profil</a> pour comparer à un objectif.</p>`}
         <div class="chart-box" data-chart="kcal"></div>
-        ${st.shakes ? `<p class="fine">Dont ${st.shakes} shaker${st.shakes > 1 ? 's' : ''} de whey sur la période.</p>` : ''}
+        ${st.shakes || st.snacks ? `<p class="fine">Compris : ${[st.shakes ? `${st.shakes} shaker${st.shakes > 1 ? 's' : ''} de whey` : '', st.snacks ? `${st.snacks} craquage${st.snacks > 1 ? 's' : ''} (${calc.fmt0(st.snackKcal)} kcal)` : ''].filter(Boolean).join(' et ')} sur la période.</p>` : ''}
         ${st.partial ? '<p class="fine">Les commandes et repas libres comptent pour leurs calories estimées, sans détail des protéines.</p>' : ''}`
         : '<p class="empty">Pas encore de repas sur cette période.</p>'}
     </section>

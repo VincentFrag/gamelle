@@ -70,7 +70,12 @@ function meal(d, rowId) {
   });
   out.parts = pairs(d.parts, 6);
   if (!out.parts.length) delete out.parts;
-  if (out.kind === 'compo' && !out.parts && !out.sauce) return null;
+  // Sauce « à l'œil » (par portion) et dessert libre (carré de chocolat, yaourt, produit du commerce…)
+  out.sauceParts = pairs(d.sauceParts, 10);
+  if (!out.sauceParts.length) delete out.sauceParts;
+  out.dessertParts = pairs(d.dessertParts, 8);
+  if (!out.dessertParts.length) delete out.dessertParts;
+  if (out.kind === 'compo' && !out.parts && !out.sauce && !out.sauceParts) return null;
   return out.day && out.slot && out.kind ? out : null;
 }
 
@@ -205,6 +210,9 @@ function weight(d, rid) {
   if (d.creatine === true) out.creatine = true;
   const sh = num(d.shakes, 0, 5, { int: true });
   if (sh) out.shakes = sh;
+  // Craquages de la journée, hors repas : [aliment, quantité]
+  const sn = pairs(d.snacks, 12);
+  if (sn.length) out.snacks = sn;
   return Object.keys(out).length ? out : null;
 }
 

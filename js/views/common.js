@@ -1,10 +1,12 @@
 // Éléments d'interface partagés : étiquettes de prix, macros, choix de recette, actions sur un repas.
+import * as store from '../store.js';
 import * as calc from '../calc.js';
 import * as food from '../food.js';
 import * as plan from '../plan.js';
 import * as have from '../have.js';
 import { esc, icon, openSheet, menuSheet, toast, formData } from '../ui.js';
-import { pickIngredient, groupOf, defaultQty, GROUP_LABELS } from './aliments.js';
+import { pickIngredient, productSheet, groupOf, defaultQty, GROUP_LABELS } from './aliments.js';
+import * as portions from '../portions.js';
 
 export function priceTag(eur, { big = false, cls = '' } = {}) {
   return `<span class="price ${big ? 'is-big' : ''} ${cls}"><span class="price-int">${esc(calc.fmtEur(eur).replace(/\s€$/, ''))}</span><span class="price-cur">€</span></span>`;
@@ -207,6 +209,11 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
     if (ing) pick.set(id, { group: groupOf(ing), qty: q });
   }
   let sauceId = cur ? cur.sauce || null : sauce;
+  // Ma sauce, à l'œil (par portion)
+  const mineParts = new Map(cur?.sauceParts || []);
+  let mine = Boolean(cur?.sauceParts?.length);
+  const sauceExtra = `<button type="button" class="chip chip-add" data-sauce-other>${icon('add')} Autre</button>`;
+  const mineList = () => (mine && mineParts.size ? [...mineParts] : null);
   const sauces = food.recipes().filter((r) => r.cat === 'sauce').sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const cookedDefault = cur?.cooked ?? (slot ? plan.defaultCooked(slot, s) : 2);
   const itemsOf = (g) => {
@@ -231,9 +238,11 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
       <div data-groups>${groupsHtml()}</div>
       <fieldset class="compo-group g-sauce"><legend>Sauce</legend>
         <div class="chips tight">
-          <button type="button" class="chip ${!sauceId ? 'is-on' : ''}" data-sauce="">Sans sauce</button>
+          <button type="button" class="chip ${!sauceId && !mine ? 'is-on' : ''}" data-sauce="">Sans sauce</button>
+          <button type="button" class="chip chip-mine ${mine ? 'is-on' : ''}" data-sauce="__mine">Ma sauce, à l’œil</button>
           ${sauces.map((r) => `<button type="button" class="chip ${sauceId === r.id ? 'is-on' : ''}" data-sauce="${esc(r.id)}">${esc(r.name.replace(/^Sauce\s+/i, '').replace(/^./, (c) => c.toUpperCase()))}</button>`).join('')}
-        </div></fieldset>
+        </div>
+        <div class="sauce-mine" data-mine-box ${mine ? '' : 'hidden'}></div></fieldset>
       <div data-qty></div>
       <div class="compo-total" data-total></div>
       <label class="field small-field"><span>Portions cuisinées</span><input name="cooked" inputmode="decimal" value="${esc(calc.numInput(cookedDefault))}"></label>
@@ -242,12 +251,12 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
       const total = () => {
         const p = parts();
         const box = el.querySelector('[data-total]');
-        if (!p.length && !sauceId) {
+        if (!p.length && !sauceId && !mineList()) {
           box.innerHTML = '<span class="fine">Choisis au moins un élément.</span>';
           return;
         }
-        const st = food.compoStats(p, sauceId);
-        box.innerHTML = `<span class="compo-name">${esc(food.compoTitle(p, sauceId))}</span>
+        const st = food.compoStats(p, sauceId, mineList());
+        box.innerHTML = `<span class="compo-name">${esc(food.compoTitle(p, sauceId, mineList()))}</span>
           <span class="compo-figs">${macros(st)} ${priceTag(st.cost)}</span>`;
       };
       const qtyList = () => {
@@ -275,7 +284,22 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
           total();
         }
       });
+      const drawMine = () => {
+        const mb = el.querySelector('[data-mine-box]');
+        mb.hidden = !mine;
+        if (mine) mb.innerHTML = `<p class="field-help">Pour une portion. Touche ce que tu mets, ajuste avec − et + : une cuillère, une pincée, ça suffit.</p>${eyeball({ suggest: portions.SAUCE_ORDER, ctx: 'sauce', chosen: mineParts, extra: sauceExtra })}`;
+      };
+      drawMine();
       el.addEventListener('click', async (e) => {
+        if (el.querySelector('[data-mine-box]').contains(e.target)) {
+          if (eyeballClick(e, mineParts, 'sauce')) { drawMine(); return total(); }
+          if (e.target.closest('[data-sauce-other]')) {
+            const id = await pickIngredient({ title: 'Dans ma sauce' });
+            if (id && !mineParts.has(id)) mineParts.set(id, portions.defaultQty(id, 'sauce'));
+            drawMine();
+            return total();
+          }
+        }
         const c = e.target.closest('[data-part]');
         if (c) {
           const id = c.dataset.id;
@@ -302,8 +326,10 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
         }
         const sc = e.target.closest('[data-sauce]');
         if (sc) {
-          sauceId = sc.dataset.sauce || null;
-          el.querySelectorAll('[data-sauce]').forEach((b) => b.classList.toggle('is-on', (b.dataset.sauce || null) === sauceId));
+          mine = sc.dataset.sauce === '__mine';
+          sauceId = mine ? null : sc.dataset.sauce || null;
+          el.querySelectorAll('[data-sauce]').forEach((b) => b.classList.toggle('is-on', mine ? b.dataset.sauce === '__mine' : (b.dataset.sauce || null) === sauceId));
+          drawMine();
           total();
         }
       });
@@ -316,7 +342,7 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
         label: 'Enregistrer', kind: 'primary',
         handler(el) {
           const p = parts();
-          if (!p.length && !sauceId) {
+          if (!p.length && !sauceId && !mineList()) {
             toast('Choisis au moins un élément.', { kind: 'error' });
             return false;
           }
@@ -324,7 +350,7 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
           const d = day || f.day;
           const sl = slot || f.slot;
           const cooked = Math.max(1, calc.parseNum(f.cooked) || 1);
-          plan.setMeal(d, sl, { kind: 'compo', parts: p, sauce: sauceId, portions: cur?.portions ?? 1, cooked });
+          plan.setMeal(d, sl, { kind: 'compo', parts: p, sauce: sauceId, sauceParts: mineList() || undefined, portions: cur?.portions ?? 1, cooked });
           return { day: d, slot: sl };
         },
       },
@@ -350,7 +376,10 @@ export function prepSheet(m, ctx) {
       ${sr ? `<h3 class="block-title">${esc(sr.name)}</h3>
         <ul class="ing-list">${sr.ing.map(([iid, q]) => { const l = food.ingLine(iid, (q * (m.cooked ?? 1)) / (sr.serves || 1)); return `<li><span class="ing-qty">${esc(l.qty)}</span><span class="ing-name">${esc(l.name)}</span></li>`; }).join('')}</ul>
         <ol class="steps">${sr.steps.map((st, i) => `<li><span class="step-n">${i + 1}</span><span class="step-t">${esc(st.t)}</span>${st.s ? `<button class="timer-chip" data-timer="${st.s}" data-label="${esc(sr.name)}">${icon('timer')} ${esc(calc.fmtMinutes(st.s))}</button>` : ''}</li>`).join('')}</ol>
-        ${sr.tip ? `<p class="hint-text">${esc(sr.tip)}</p>` : ''}` : ''}`,
+        ${sr.tip ? `<p class="hint-text">${esc(sr.tip)}</p>` : ''}` : ''}
+      ${m.sauceParts?.length ? `<h3 class="block-title">Ta sauce, à l’œil</h3>
+        <ul class="ing-list">${m.sauceParts.map(([iid, q]) => `<li><span class="ing-qty">${esc(portions.fmtMeasure(iid, q * (m.cooked ?? 1), 'sauce'))}</span><span class="ing-name">${esc(food.ingredient(iid)?.name || '')}</span></li>`).join('')}</ul>
+        <p class="hint-text">Fais revenir d’abord ce qui se cuit (poivron, oignon, ail), puis ajoute le reste à feu doux, 2 à 3 minutes, avec un fond d’eau si c’est trop épais. Goûte et ajuste.</p>` : ''}`,
     onMount(el) {
       el.addEventListener('click', (e) => {
         const t = e.target.closest('[data-timer]');
@@ -371,27 +400,97 @@ function dessertRow(r, { on = false, attr = '' } = {}) {
   </button>`;
 }
 
+// ---------- Choix « à l'œil » ----------
+// Un état (Map id → quantité) affiché en pastilles de suggestion et en lignes avec − / +.
+// ctx : 'dessert' ou 'sauce' (pour les mesures : carré, pot, cuillère, pincée…).
+export function eyeball({ suggest, ctx, chosen, extra = '' }) {
+  const chips = suggest.filter((id) => food.ingredient(id)).map((id) => `<button type="button" class="chip ${chosen.has(id) ? 'is-on' : ''} ${have.has(id) ? 'has-dot' : ''}" data-eye="${esc(id)}" aria-pressed="${chosen.has(id)}">${esc(food.ingredient(id).name)}</button>`).join('');
+  const rows = [...chosen].map(([id, q]) => {
+    const ing = food.ingredient(id);
+    if (!ing) return '';
+    const st = food.sumOf([[id, q]]);
+    return `<div class="mrow"><span class="mrow-name">${esc(ing.name)}<small>${calc.fmt0(st.kcal)} kcal${st.p >= 1 ? `, ${calc.fmt0(st.p)} g prot.` : ''}</small></span>
+      <span class="mstep"><button type="button" class="icon-btn small" data-eye-step="${esc(id)}" data-dir="-1" aria-label="Moins de ${esc(ing.name)}">−</button><b>${esc(portions.fmtMeasure(id, q, ctx))}</b><button type="button" class="icon-btn small" data-eye-step="${esc(id)}" data-dir="1" aria-label="Plus de ${esc(ing.name)}">+</button></span></div>`;
+  }).join('');
+  return `<div class="chips tight">${chips}${extra}</div>${rows ? `<div class="mrows">${rows}</div>` : ''}`;
+}
+
+// Gère les clics d'un bloc eyeball. Renvoie true si le clic le concernait.
+export function eyeballClick(e, chosen, ctx) {
+  const c = e.target.closest('[data-eye]');
+  if (c) {
+    const id = c.dataset.eye;
+    if (chosen.has(id)) chosen.delete(id);
+    else chosen.set(id, portions.defaultQty(id, ctx));
+    return true;
+  }
+  const st = e.target.closest('[data-eye-step]');
+  if (st) {
+    const id = st.dataset.eyeStep;
+    const q = portions.step(id, chosen.get(id) || 0, Number(st.dataset.dir), ctx);
+    if (q > 0) chosen.set(id, q);
+    else chosen.delete(id);
+    return true;
+  }
+  return false;
+}
+
 export function dessertSheet(day, slot) {
   const m = plan.getMeal(day, slot);
   const s = calc.settings();
+  const chosen = new Map(m?.dessertParts || []);
   const simple = food.recipes().filter((r) => r.cat === 'dessert' && !food.isLot(r) && food.usable(r, s))
     .sort((a, b) => food.recipeStats(a).kcal - food.recipeStats(b).kcal);
   const lots = plan.bakesFor(day, m?.cake).map((b) => ({ b, r: food.recipe(b.recipe) })).filter((x) => x.r);
+  // Suggestions : les classiques, plus ce que tu as déjà pris en dessert ou en craquage
+  const suggest = [...new Set([...portions.DESSERT_ORDER, ...recentFree()])];
+  const extra = `<button type="button" class="chip chip-add" data-other>${icon('add')} Autre aliment</button><button type="button" class="chip chip-add is-crack" data-crack>${icon('spark')} Craquage</button>`;
   return openSheet({
     title: 'Dessert',
     wide: true,
-    body: `<button type="button" class="btn block" data-suggest>${icon('shuffle')} Me proposer un dessert</button>
+    body: `<section class="free-dessert">
+        <h3 class="group-title">Mon dessert</h3>
+        <p class="field-help">Touche ce que tu prends, règle la quantité avec − et +. « Craquage » cherche un produit du commerce (biscuits, barre, glace…) sur Open Food Facts.</p>
+        <div data-eye-box></div>
+        <div class="compo-total" data-total></div>
+        <button type="button" class="btn primary block" data-save-free>Valider ce dessert</button>
+      </section>
       ${lots.length ? `<h3 class="group-title">Dessert de la semaine</h3><div class="list">${lots.map(({ b, r }) => {
         const left = b.parts - plan.bakeUsed(b.id) + (m?.cake === b.id ? 1 : 0);
         const st = food.recipeStats(r);
         const f = (r.serves || 1) / b.parts;
         return `<button type="button" class="list-row dessert-row ${m?.cake === b.id ? 'is-on' : ''}" data-cake="${esc(b.id)}"><span class="list-main">${esc(r.name)}, une part<small>${left} part${left > 1 ? 's' : ''} restante${left > 1 ? 's' : ''}, ${calc.fmt0(st.kcal * f)} kcal</small></span>${priceTag(st.cost * f)}</button>`;
       }).join('')}</div>` : ''}
-      <h3 class="group-title">Desserts simples</h3>
+      <h3 class="group-title">Ou une recette de dessert</h3>
+      <button type="button" class="btn block" data-suggest>${icon('shuffle')} Me proposer un dessert</button>
       <div class="list">${simple.map((r) => dessertRow(r, { on: m?.dessert === r.id, attr: `data-dessert="${esc(r.id)}"` })).join('')}</div>
-      ${m?.dessert || m?.cake ? '<button type="button" class="btn ghost block" data-none>Pas de dessert</button>' : ''}`,
+      ${m?.dessert || m?.cake || m?.dessertParts ? '<button type="button" class="btn ghost block" data-none>Pas de dessert</button>' : ''}`,
     onMount(el, api) {
-      el.addEventListener('click', (e) => {
+      const draw = () => {
+        el.querySelector('[data-eye-box]').innerHTML = eyeball({ suggest, ctx: 'dessert', chosen, extra });
+        const list = [...chosen];
+        const st = food.sumOf(list);
+        el.querySelector('[data-total]').innerHTML = list.length
+          ? `<span class="compo-name">${esc(list.map(([id, q]) => portions.itemLabel(id, q)).join(', ').replace(/^./, (c) => c.toUpperCase()))}</span><span class="compo-figs">${macros(st)} ${priceTag(st.cost)}</span>`
+          : '<span class="fine">Rien de choisi pour l’instant.</span>';
+        el.querySelector('[data-save-free]').disabled = !list.length;
+      };
+      el.addEventListener('click', async (e) => {
+        if (eyeballClick(e, chosen, 'dessert')) return draw();
+        if (e.target.closest('[data-other]')) {
+          const id = await pickIngredient({ title: 'Dessert' });
+          if (id && !chosen.has(id)) chosen.set(id, portions.defaultQty(id, 'dessert'));
+          return draw();
+        }
+        if (e.target.closest('[data-crack]')) {
+          const res = await productSheet({ title: 'Craquage', recent: recentFree() });
+          if (res) chosen.set(res.id, (chosen.get(res.id) || 0) + res.qty);
+          return draw();
+        }
+        if (e.target.closest('[data-save-free]')) {
+          plan.setDessert(day, slot, { parts: [...chosen] });
+          return api.close(true);
+        }
         if (e.target.closest('[data-suggest]')) {
           const r = plan.suggestDessert(day, slot);
           if (r) {
@@ -415,8 +514,18 @@ export function dessertSheet(day, slot) {
           api.close(true);
         }
       });
+      draw();
     },
   });
+}
+
+// Aliments perso déjà pris en dessert ou en craquage, du plus récent au plus ancien
+export function recentFree(max = 8) {
+  const seen = [];
+  const add = (id) => { if (!seen.includes(id) && food.ingredient(id)?.custom) seen.push(id); };
+  for (const r of store.all('weight').sort((a, b) => b.id.localeCompare(a.id))) for (const [id] of r.data.snacks || []) add(id);
+  for (const r of store.all('meal').sort((a, b) => b.id.localeCompare(a.id))) for (const [id] of r.data.dessertParts || []) add(id);
+  return seen.slice(0, max);
 }
 
 // Dessert de la semaine : préparé une fois, mangé en parts.

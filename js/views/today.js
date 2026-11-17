@@ -7,7 +7,9 @@ import * as plan from '../plan.js';
 import * as have from '../have.js';
 import * as habits from '../habits.js';
 import { esc, icon, openSheet, toast, formData, confirmSheet } from '../ui.js';
-import { priceTag, prepSheet, outsideSheet } from './common.js';
+import { priceTag, prepSheet, outsideSheet, macros, eyeball, eyeballClick, recentFree } from './common.js';
+import { productSheet, pickIngredient } from './aliments.js';
+import * as portions from '../portions.js';
 
 const LETTERS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
@@ -58,7 +60,8 @@ export function todayCard(today = calc.localDay()) {
   }
   const w = log.weight;
   const actions = `<button class="pill-btn" data-weigh>${icon('scale')}<span>${w ? `<b>${esc(calc.fmt1(w))}</b> kg aujourd’hui` : 'Noter mon poids'}</span></button>
-      <button class="pill-btn is-flemme" data-flemme>${icon('spark')}<span>J’ai la flemme</span></button>`;
+      <button class="pill-btn is-flemme" data-flemme>${icon('pot')}<span>J’ai la flemme</span></button>
+      <button class="pill-btn is-crack" data-crack-day="${today}">${icon('spark')}<span>${(log.snacks || []).length ? `Craquage : <b>${calc.fmt0(food.sumOf(log.snacks).kcal)}</b> kcal` : 'Craquage'}</span></button>`;
   // Tout est pris : la carte se fait discrète, sur une seule rangée.
   if (items.length && !pending.length) {
     const cs = h.creatine ? habits.creatineStreak(today) : 0;
@@ -108,6 +111,11 @@ export async function todayClick(e, ctx) {
   }
   if (e.target.closest('[data-weigh]')) {
     if (await weightSheet()) ctx.render();
+    return true;
+  }
+  const cr = e.target.closest('[data-crack-day]');
+  if (cr) {
+    if (await craquageSheet(cr.dataset.crackDay)) ctx.render();
     return true;
   }
   if (e.target.closest('[data-flemme]')) {
@@ -287,4 +295,82 @@ export async function flemmeSheet(ctx) {
     return prepSheet(plan.getMeal(today, slot), ctx);
   }
   if (res.order) return outsideSheet(today, slot, 'uber', null);
+}
+
+// ---------- Craquage ----------
+// Ce qu'on grignote hors repas, noté dans le journal du jour et compté dans la journée.
+export function snackRow(day) {
+  const list = store.dayLog(day).snacks || [];
+  if (!list.length) return '';
+  const st = food.sumOf(list);
+  const names = list.map(([id, q]) => portions.itemLabel(id, q)).join(', ');
+  return `<button class="meal is-crack" data-crack-day="${day}">
+    <span class="meal-slot">Craquage</span>
+    <span class="meal-main"><span class="meal-name">${icon('spark', 'meal-ico')}${esc(names.charAt(0).toUpperCase() + names.slice(1))}</span>
+      <span class="meal-sub">${calc.fmt0(st.p)} g de protéines</span></span>
+    <span class="meal-side">${st.cost ? priceTag(st.cost) : ''}<span class="meal-kcal">${calc.fmt0(st.kcal)} kcal</span></span>
+  </button>`;
+}
+
+export async function craquageSheet(day = calc.localDay()) {
+  const chosen = new Map(store.dayLog(day).snacks || []);
+  const had = chosen.size > 0;
+  const recent = recentFree();
+  const suggest = [...new Set([...recent, 'chocolat_noir', 'amandes', 'banane', 'compote'])];
+  const extra = `<button type="button" class="chip chip-add" data-other>${icon('add')} Mes aliments</button>`;
+  const res = await openSheet({
+    title: 'Craquage',
+    wide: true,
+    body: `<p class="pep small">${icon('spark')}<span>Ça arrive, et ça fait partie du jeu. Note-le : ta journée reste juste, et c’est tout.</span></p>
+      <button type="button" class="btn primary block" data-search-off>${icon('search')} Chercher un produit (Open Food Facts)</button>
+      <p class="field-help">Biscuits, barre chocolatée, glace, chips… par nom ou code-barres, avec les calories et macros par portion.</p>
+      <h3 class="group-title">${calc.relDay(day) === calc.fmtDayName(day) ? calc.fmtDayName(day) : calc.relDay(day)}</h3>
+      <div data-eye-box></div>
+      <div class="compo-total" data-total></div>`,
+    onMount(el) {
+      const draw = () => {
+        el.querySelector('[data-eye-box]').innerHTML = eyeball({ suggest, ctx: 'dessert', chosen, extra });
+        const list = [...chosen];
+        const st = food.sumOf(list);
+        el.querySelector('[data-total]').innerHTML = list.length
+          ? `<span class="compo-name">${esc(list.map(([id, q]) => portions.itemLabel(id, q)).join(', ').replace(/^./, (c) => c.toUpperCase()))}</span><span class="compo-figs">${macros(st)}</span>`
+          : '<span class="fine">Rien de noté pour l’instant.</span>';
+      };
+      el.addEventListener('click', async (e) => {
+        if (eyeballClick(e, chosen, 'dessert')) return draw();
+        if (e.target.closest('[data-search-off]')) {
+          const r = await productSheet({ title: 'Craquage', recent });
+          if (r) {
+            chosen.set(r.id, (chosen.get(r.id) || 0) + r.qty);
+            if (!suggest.includes(r.id)) suggest.unshift(r.id);
+          }
+          return draw();
+        }
+        if (e.target.closest('[data-other]')) {
+          const id = await pickIngredient({ title: 'Craquage' });
+          if (id && !chosen.has(id)) {
+            chosen.set(id, portions.defaultQty(id, 'dessert'));
+            if (!suggest.includes(id)) suggest.unshift(id);
+          }
+          return draw();
+        }
+      });
+      draw();
+    },
+    actions: [
+      ...(had ? [{ label: 'Tout effacer', value: 'clear', kind: 'ghost danger' }] : [{ label: 'Annuler', value: null }]),
+      { label: 'Enregistrer', kind: 'primary', value: 'save' },
+    ],
+  });
+  if (res === 'clear') {
+    plan.setSnacks(day, []);
+    return true;
+  }
+  if (res === 'save') {
+    plan.setSnacks(day, [...chosen]);
+    const st = food.sumOf([...chosen]);
+    if (chosen.size) toast(`Craquage noté : ${calc.fmt0(st.kcal)} kcal.`);
+    return true;
+  }
+  return false;
 }
