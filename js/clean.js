@@ -15,6 +15,7 @@ export const PLACES = ['frigo', 'congelo', 'placard'];
 export const EVERY = ['week', 'month', 'off'];
 
 const id = (v) => (typeof v === 'string' && ID.test(v) ? v : null);
+export const FAV_KEYS = ['feculent', 'proteine', 'legume', 'extra', 'sauce', 'petitdej', 'collation', 'dessert'];
 const str = (v, max) => (v == null ? '' : String(v).slice(0, max));
 const bool = (v) => v === true;
 const oneOf = (v, list, dflt) => (list.includes(v) ? v : dflt);
@@ -68,7 +69,7 @@ function meal(d, rowId) {
     dessert: id(d.dessert),
     cake: id(d.cake),
   });
-  out.parts = pairs(d.parts, 6);
+  out.parts = pairs(d.parts, 10);
   if (!out.parts.length) delete out.parts;
   // Sauce « à l'œil » (par portion) et dessert libre (carré de chocolat, yaourt, produit du commerce…)
   out.sauceParts = pairs(d.sauceParts, 10);
@@ -159,7 +160,10 @@ function settings(d) {
   const s = d.slots && typeof d.slots === 'object' ? d.slots : {};
   const e = d.equip && typeof d.equip === 'object' ? d.equip : {};
   const h = d.habits && typeof d.habits === 'object' ? d.habits : {};
+  const fv = d.favs && typeof d.favs === 'object' ? d.favs : {};
   return {
+    // Aliments ajoutés à la main, gardés en suggestion (assiette, sauce, petit-déj, collation, dessert)
+    favs: Object.fromEntries(FAV_KEYS.map((k) => [k, (Array.isArray(fv[k]) ? fv[k] : []).map(id).filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).slice(0, 12)])),
     profile: drop({
       sex: oneOf(p.sex, ['h', 'f'], null),
       age: num(p.age, 10, 110, { int: true }),

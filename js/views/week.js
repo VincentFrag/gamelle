@@ -3,7 +3,7 @@ import * as calc from '../calc.js';
 import * as food from '../food.js';
 import * as plan from '../plan.js';
 import { esc, icon, menuSheet, confirmSheet, toast } from '../ui.js';
-import { priceTag, mealActions, gauge, pickRecipe, bakeSheet } from './common.js';
+import { priceTag, mealActions, gauge, pickRecipe, bakeSheet, dessertSheet } from './common.js';
 import { todayCard, todayClick, craquageSheet, snackRow } from './today.js';
 
 function mealSub(m) {
@@ -16,7 +16,7 @@ function mealSub(m) {
   if (plan.isCooked(m)) {
     const bits = [];
     if (m.done) bits.push('Cuisiné');
-    else if (m.kind === 'compo') bits.push('Assiette composée');
+    else if (m.kind === 'compo') bits.push(m.slot === 'petitdej' ? 'Ton petit-déj' : m.slot === 'collation' ? 'Ta collation' : 'Assiette composée');
     else if (r) bits.push(`${r.time} min`);
     if ((m.cooked ?? 1) > (m.portions ?? 1)) bits.push(`${calc.fmt1(m.cooked)} portions`);
     if (m.note) bits.push(m.note);
@@ -54,15 +54,19 @@ function mealRow(day, slot, s) {
   const st = plan.mealStats(m, s);
   const d = plan.dessertOf(m);
   const ico = m.kind === 'reste' ? icon('box', 'meal-ico') : m.kind === 'uber' ? icon('bike', 'meal-ico') : m.done ? icon('check', 'meal-ico') : m.kind === 'compo' ? icon('fork', 'meal-ico') : '';
+  const main = slot === 'midi' || slot === 'soir';
+  // Le dessert a sa propre ligne sous le midi et le soir : « + Dessert », ou le dessert choisi
+  const dessertLine = !main ? '' : d
+    ? `<button class="meal-dessert-row has-dessert" data-dessert-day="${day}" data-dessert-slot="${slot}" style="--slot: var(--sl-${slot})"><span class="dr-label">Dessert</span><span class="dr-name">${esc(d.name)}</span><span class="dr-kcal">${calc.fmt0(d.kcal)} kcal</span></button>`
+    : `<button class="meal-dessert-row" data-dessert-day="${day}" data-dessert-slot="${slot}" style="--slot: var(--sl-${slot})"><span class="dr-label"></span><span class="dr-name">${icon('add')} Dessert</span></button>`;
   return `<button class="meal k-${m.kind}${m.done ? ' is-done' : ''}" data-slot="${slot}" data-day="${day}">
     <span class="meal-slot">${esc(plan.SLOT_LABELS[slot])}</span>
     <span class="meal-main">
       <span class="meal-name">${ico}${esc(plan.mealTitle(m))}</span>
       <span class="meal-sub">${esc(mealSub(m))}</span>
-      ${d ? `<span class="meal-dessert">+ ${esc(d.name)}</span>` : ''}
     </span>
     <span class="meal-side">${priceTag(st.cost, { cls: m.kind === 'uber' ? 'is-uber' : '' })}<span class="meal-kcal">${calc.fmt0(st.kcal)} kcal</span></span>
-  </button>`;
+  </button>${dessertLine}`;
 }
 
 function tonightCard(today, s) {
@@ -196,6 +200,11 @@ export function renderWeek(view, ctx, startParam) {
 
   view.addEventListener('click', async (e) => {
     if (await todayClick(e, ctx)) return;
+    const dr = e.target.closest('[data-dessert-day]');
+    if (dr) {
+      await dessertSheet(dr.dataset.dessertDay, dr.dataset.dessertSlot);
+      return ctx.render();
+    }
     const cr = e.target.closest('[data-crack-day]');
     if (cr) {
       if (await craquageSheet(cr.dataset.crackDay)) ctx.render();

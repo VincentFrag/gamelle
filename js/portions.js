@@ -27,7 +27,18 @@ export const DESSERT = {
   cacao: CAF(5),
   whey: M('dose', 'doses', 30, 0.5),
   chocolat_patissier: M('carré', 'carrés', 5),
+  // petit-déj et collation
+  flocons: M('portion', 'portions', 40, 0.5),
+  lait: M('verre', 'verres', 200, 0.5), lait_ecreme: M('verre', 'verres', 200, 0.5),
+  pain_complet: M('tranche', 'tranches', 35), pain_mie: M('tranche', 'tranches', 25), baguette: M('', '', 0.25, 1),
+  beurre: M('noisette', 'noisettes', 5), oeuf: M('', '', 1), jambon: M('tranche', 'tranches', 40),
+  blanc_poulet: M('tranche', 'tranches', 20), emmental: M('portion', 'portions', 20), avocat: M('', '', 0.5, 1),
+  ricotta: M('c. à soupe', 'c. à soupe', 20, 0.5), philadelphia: M('c. à soupe', 'c. à soupe', 20, 0.5),
 };
+export const BREAKFAST_ORDER = ['flocons', 'lait', 'skyr', 'fromage_blanc', 'yaourt', 'banane', 'pomme', 'fruits_rouges', 'pain_complet',
+  'beurre', 'miel', 'beurre_cacahuete', 'oeuf', 'jambon', 'emmental', 'avocat', 'granola', 'amandes', 'whey', 'compote'];
+export const SNACK_ORDER = ['skyr', 'yaourt', 'fromage_blanc', 'compote', 'banane', 'pomme', 'clementine', 'amandes', 'noix',
+  'chocolat_noir', 'pain_complet', 'beurre_cacahuete', 'whey', 'granola', 'cottage', 'oeuf'];
 export const DESSERT_ORDER = ['chocolat_noir', 'yaourt', 'skyr', 'yaourt_grec', 'compote', 'fromage_blanc', 'pomme', 'banane',
   'clementine', 'kiwi', 'poire', 'fruits_rouges', 'miel', 'amandes', 'granola', 'beurre_cacahuete', 'whey'];
 
@@ -60,7 +71,7 @@ export function measureOf(id, ctx = 'dessert') {
 
 export function defaultQty(id, ctx = 'dessert') {
   const m = measureOf(id, ctx);
-  const first = { chocolat_noir: 2, chocolat_patissier: 2, creme: 2, philadelphia: 1, moutarde: 1, miso: 1, concentre: 1 }[id];
+  const first = { chocolat_noir: 2, chocolat_patissier: 2, creme: 2, philadelphia: 1, moutarde: 1, miso: 1, concentre: 1, pain_complet: 2, oeuf: 2 }[id];
   return m.q * (first ?? 1);
 }
 

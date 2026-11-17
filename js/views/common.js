@@ -7,6 +7,7 @@ import * as have from '../have.js';
 import { esc, icon, openSheet, menuSheet, toast, formData } from '../ui.js';
 import { pickIngredient, productSheet, groupOf, defaultQty, GROUP_LABELS } from './aliments.js';
 import * as portions from '../portions.js';
+import * as favs from '../favs.js';
 
 export function priceTag(eur, { big = false, cls = '' } = {}) {
   return `<span class="price ${big ? 'is-big' : ''} ${cls}"><span class="price-int">${esc(calc.fmtEur(eur).replace(/\s€$/, ''))}</span><span class="price-cur">€</span></span>`;
@@ -214,20 +215,27 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
   let mine = Boolean(cur?.sauceParts?.length);
   const sauceExtra = `<button type="button" class="chip chip-add" data-sauce-other>${icon('add')} Autre</button>`;
   const mineList = () => (mine && mineParts.size ? [...mineParts] : null);
+  const sauceUi = {};
   const sauces = food.recipes().filter((r) => r.cat === 'sauce').sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const cookedDefault = cur?.cooked ?? (slot ? plan.defaultCooked(slot, s) : 2);
+  const ui = {};
   const itemsOf = (g) => {
-    const base = g === 'extra' ? [] : food.COMPO[g].items.map(([id, q]) => [id, q]);
+    // tes ajouts d'abord, puis les classiques
+    const base = favs.list(g).map((id) => [id, defaultQty(food.ingredient(id), g)]);
+    if (g !== 'extra') for (const [id, q] of food.COMPO[g].items) if (!base.some(([x]) => x === id)) base.push([id, q]);
     for (const [id, p] of pick) if (p.group === g && !base.some(([x]) => x === id)) base.push([id, p.qty]);
     return base;
   };
   const chip = (group, [id, q]) => {
     const ing = food.ingredient(id);
     if (!ing) return '';
+    if (ui.editing && favs.list(group).includes(id)) return `<button type="button" class="chip is-removable" data-part-del="${group}" data-id="${esc(id)}" aria-label="Retirer ${esc(ing.name)} des suggestions">${esc(ing.name)} ${icon('close')}</button>`;
     return `<button type="button" class="chip ${pick.has(id) ? 'is-on' : ''} ${have.has(id) ? 'has-dot' : ''}" data-part="${group}" data-id="${esc(id)}" aria-pressed="${pick.has(id)}">${esc(ing.name)}<small>${esc(food.fmtQty(ing, pick.get(id)?.qty ?? q))}</small></button>`;
   };
+  const anyFav = () => GROUPS.some((g) => favs.list(g).length);
   const groupsHtml = () => GROUPS.map((g) => `<fieldset class="compo-group g-${g}"><legend>${esc(GROUP_LABELS[g])}${g === 'extra' ? ' <small>fromage, avocat, graines…</small>' : ''}</legend>
-      <div class="chips tight">${itemsOf(g).map((it) => chip(g, it)).join('')}<button type="button" class="chip chip-add" data-other="${g}">${icon('add')} ${g === 'extra' ? 'Ajouter' : 'Autre'}</button></div></fieldset>`).join('');
+      <div class="chips tight">${itemsOf(g).map((it) => chip(g, it)).join('')}${ui.editing ? '' : `<button type="button" class="chip chip-add" data-other="${g}">${icon('add')} ${g === 'extra' ? 'Ajouter' : 'Autre'}</button>`}</div></fieldset>`).join('')
+    + (anyFav() ? `<button type="button" class="link-btn fav-edit" data-parts-edit>${ui.editing ? 'Terminé' : 'Retirer des aliments ajoutés'}</button>` : '');
   const parts = () => GROUPS.flatMap((g) => [...pick].filter(([, p]) => p.group === g).map(([id, p]) => [id, p.qty]));
   return openSheet({
     title: cur?.id ? 'Modifier l’assiette' : 'Composer une assiette',
@@ -287,15 +295,16 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
       const drawMine = () => {
         const mb = el.querySelector('[data-mine-box]');
         mb.hidden = !mine;
-        if (mine) mb.innerHTML = `<p class="field-help">Pour une portion. Touche ce que tu mets, ajuste avec − et + : une cuillère, une pincée, ça suffit.</p>${eyeball({ suggest: portions.SAUCE_ORDER, ctx: 'sauce', chosen: mineParts, extra: sauceExtra })}`;
+        if (mine) mb.innerHTML = `<p class="field-help">Pour une portion. Touche ce que tu mets, ajuste avec − et + : une cuillère, une pincée, ça suffit.</p>${eyeball({ suggest: portions.SAUCE_ORDER, ctx: 'sauce', chosen: mineParts, extra: sauceExtra, favKey: 'sauce', ui: sauceUi })}`;
       };
       drawMine();
       el.addEventListener('click', async (e) => {
         if (el.querySelector('[data-mine-box]').contains(e.target)) {
-          if (eyeballClick(e, mineParts, 'sauce')) { drawMine(); return total(); }
+          if (eyeballClick(e, mineParts, 'sauce', { favKey: 'sauce', ui: sauceUi })) { drawMine(); return total(); }
           if (e.target.closest('[data-sauce-other]')) {
             const id = await pickIngredient({ title: 'Dans ma sauce' });
             if (id && !mineParts.has(id)) mineParts.set(id, portions.defaultQty(id, 'sauce'));
+            favs.add('sauce', id);
             drawMine();
             return total();
           }
@@ -311,6 +320,16 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
           }
           return redraw();
         }
+        if (e.target.closest('[data-parts-edit]')) {
+          ui.editing = !ui.editing;
+          return redraw();
+        }
+        const pd = e.target.closest('[data-part-del]');
+        if (pd) {
+          favs.remove(pd.dataset.partDel, pd.dataset.id);
+          if (!anyFav()) ui.editing = false;
+          return redraw();
+        }
         const un = e.target.closest('[data-unpick]');
         if (un) {
           pick.delete(un.dataset.unpick);
@@ -322,6 +341,8 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
           const g = o.dataset.other;
           const id = await pickIngredient({ title: GROUP_LABELS[g], group: g });
           if (id && !pick.has(id)) pick.set(id, { group: g, qty: defaultQty(food.ingredient(id), g) });
+          // reste proposé dans cette famille les fois suivantes
+          if (id) favs.add(g, id);
           return redraw();
         }
         const sc = e.target.closest('[data-sauce]');
@@ -403,8 +424,14 @@ function dessertRow(r, { on = false, attr = '' } = {}) {
 // ---------- Choix « à l'œil » ----------
 // Un état (Map id → quantité) affiché en pastilles de suggestion et en lignes avec − / +.
 // ctx : 'dessert' ou 'sauce' (pour les mesures : carré, pot, cuillère, pincée…).
-export function eyeball({ suggest, ctx, chosen, extra = '' }) {
-  const chips = suggest.filter((id) => food.ingredient(id)).map((id) => `<button type="button" class="chip ${chosen.has(id) ? 'is-on' : ''} ${have.has(id) ? 'has-dot' : ''}" data-eye="${esc(id)}" aria-pressed="${chosen.has(id)}">${esc(food.ingredient(id).name)}</button>`).join('');
+// favKey : famille des favoris (ce que tu as ajouté toi-même reste proposé, et peut être retiré).
+export function eyeball({ suggest, ctx, chosen, extra = '', favKey = null, ui = {} }) {
+  const mine = favKey ? favs.list(favKey) : [];
+  const ids = [...new Set([...mine, ...suggest])].filter((id) => food.ingredient(id));
+  const chips = ids.map((id) => (ui.editing && mine.includes(id)
+    ? `<button type="button" class="chip is-removable" data-fav-del="${esc(id)}" aria-label="Retirer ${esc(food.ingredient(id).name)} des suggestions">${esc(food.ingredient(id).name)} ${icon('close')}</button>`
+    : `<button type="button" class="chip ${chosen.has(id) ? 'is-on' : ''} ${have.has(id) ? 'has-dot' : ''} ${mine.includes(id) ? 'is-fav' : ''}" data-eye="${esc(id)}" aria-pressed="${chosen.has(id)}">${esc(food.ingredient(id).name)}</button>`)).join('');
+  const editLink = mine.length ? `<button type="button" class="link-btn fav-edit" data-fav-edit>${ui.editing ? 'Terminé' : 'Retirer des aliments ajoutés'}</button>` : '';
   const rows = [...chosen].map(([id, q]) => {
     const ing = food.ingredient(id);
     if (!ing) return '';
@@ -412,11 +439,21 @@ export function eyeball({ suggest, ctx, chosen, extra = '' }) {
     return `<div class="mrow"><span class="mrow-name">${esc(ing.name)}<small>${calc.fmt0(st.kcal)} kcal${st.p >= 1 ? `, ${calc.fmt0(st.p)} g prot.` : ''}</small></span>
       <span class="mstep"><button type="button" class="icon-btn small" data-eye-step="${esc(id)}" data-dir="-1" aria-label="Moins de ${esc(ing.name)}">−</button><b>${esc(portions.fmtMeasure(id, q, ctx))}</b><button type="button" class="icon-btn small" data-eye-step="${esc(id)}" data-dir="1" aria-label="Plus de ${esc(ing.name)}">+</button></span></div>`;
   }).join('');
-  return `<div class="chips tight">${chips}${extra}</div>${rows ? `<div class="mrows">${rows}</div>` : ''}`;
+  return `<div class="chips tight">${chips}${ui.editing ? '' : extra}</div>${editLink}${rows ? `<div class="mrows">${rows}</div>` : ''}`;
 }
 
 // Gère les clics d'un bloc eyeball. Renvoie true si le clic le concernait.
-export function eyeballClick(e, chosen, ctx) {
+export function eyeballClick(e, chosen, ctx, { favKey = null, ui = {} } = {}) {
+  if (e.target.closest('[data-fav-edit]')) {
+    ui.editing = !ui.editing;
+    return true;
+  }
+  const fd = e.target.closest('[data-fav-del]');
+  if (fd && favKey) {
+    favs.remove(favKey, fd.dataset.favDel);
+    if (!favs.list(favKey).length) ui.editing = false;
+    return true;
+  }
   const c = e.target.closest('[data-eye]');
   if (c) {
     const id = c.dataset.eye;
@@ -445,6 +482,7 @@ export function dessertSheet(day, slot) {
   // Suggestions : les classiques, plus ce que tu as déjà pris en dessert ou en craquage
   const suggest = [...new Set([...portions.DESSERT_ORDER, ...recentFree()])];
   const extra = `<button type="button" class="chip chip-add" data-other>${icon('add')} Autre aliment</button><button type="button" class="chip chip-add is-crack" data-crack>${icon('spark')} Craquage</button>`;
+  const ui = {};
   return openSheet({
     title: 'Dessert',
     wide: true,
@@ -467,7 +505,7 @@ export function dessertSheet(day, slot) {
       ${m?.dessert || m?.cake || m?.dessertParts ? '<button type="button" class="btn ghost block" data-none>Pas de dessert</button>' : ''}`,
     onMount(el, api) {
       const draw = () => {
-        el.querySelector('[data-eye-box]').innerHTML = eyeball({ suggest, ctx: 'dessert', chosen, extra });
+        el.querySelector('[data-eye-box]').innerHTML = eyeball({ suggest, ctx: 'dessert', chosen, extra, favKey: 'dessert', ui });
         const list = [...chosen];
         const st = food.sumOf(list);
         el.querySelector('[data-total]').innerHTML = list.length
@@ -476,15 +514,19 @@ export function dessertSheet(day, slot) {
         el.querySelector('[data-save-free]').disabled = !list.length;
       };
       el.addEventListener('click', async (e) => {
-        if (eyeballClick(e, chosen, 'dessert')) return draw();
+        if (eyeballClick(e, chosen, 'dessert', { favKey: 'dessert', ui })) return draw();
         if (e.target.closest('[data-other]')) {
           const id = await pickIngredient({ title: 'Dessert' });
           if (id && !chosen.has(id)) chosen.set(id, portions.defaultQty(id, 'dessert'));
+          favs.add('dessert', id);
           return draw();
         }
         if (e.target.closest('[data-crack]')) {
           const res = await productSheet({ title: 'Craquage', recent: recentFree() });
-          if (res) chosen.set(res.id, (chosen.get(res.id) || 0) + res.qty);
+          if (res) {
+            chosen.set(res.id, (chosen.get(res.id) || 0) + res.qty);
+            favs.add('dessert', res.id);
+          }
           return draw();
         }
         if (e.target.closest('[data-save-free]')) {
@@ -556,25 +598,31 @@ export async function mealActions(day, slot, ctx) {
   const s = calc.settings();
   const label = `${plan.SLOT_LABELS[slot]}, ${calc.relDay(day).toLowerCase()}`;
   const main = slot === 'midi' || slot === 'soir';
-  const plate = m && (m.kind === 'compo' || (m.kind === 'reste' && !m.recipe));
+  // Petit-déj ou collation vide : on compose directement ce qu'on prend
+  if (!main && !m) {
+    const r = await freeMealSheet(day, slot);
+    if (r !== 'more') return;
+  }
+  const plate = main && m && (m.kind === 'compo' || (m.kind === 'reste' && !m.recipe));
   const items = [];
+  if (!main) items.push({ label: m && m.kind === 'compo' ? `Modifier ${slot === 'petitdej' ? 'mon petit-déj' : 'ma collation'}` : `Composer ${slot === 'petitdej' ? 'mon petit-déj' : 'ma collation'}`, value: 'free', icon: 'edit' });
   if (m && (m.kind === 'recette' || m.kind === 'reste') && food.recipe(m.recipe)) {
     items.push({ label: 'Voir la recette', value: 'open', icon: 'recettes' });
   }
   if (plate) items.push({ label: 'Comment la préparer', value: 'prep', icon: 'pot' });
   if (m && m.kind === 'recette' && food.recipe(m.recipe)?.steps.length) items.push({ label: 'Cuisiner maintenant', value: 'cook', icon: 'pot' });
-  if (plan.isCooked(m)) items.push({ label: m.done ? 'Annuler « cuisiné »' : 'Marquer comme cuisiné', value: 'done', icon: 'check' });
+  if (plan.isCooked(m) && (main || m.kind === 'recette')) items.push({ label: m.done ? 'Annuler « cuisiné »' : 'Marquer comme cuisiné', value: 'done', icon: 'check' });
   if (slot === 'midi' && !(m && m.kind === 'reste')) {
     const prev = plan.getMeal(calc.addDays(day, -1), 'soir');
     if (plan.isCooked(prev)) items.push({ label: `Gamelle : ${plan.mealTitle(prev)}`, value: 'leftover', icon: 'box' });
   }
-  if (m && m.kind === 'compo') items.push({ label: 'Modifier l’assiette', value: 'compo', icon: 'edit' });
+  if (main && m && m.kind === 'compo') items.push({ label: 'Modifier l’assiette', value: 'compo', icon: 'edit' });
   items.push({ label: m ? 'Choisir une autre recette' : 'Choisir une recette', value: 'pick', icon: 'search' });
   if (main && !(m && m.kind === 'compo')) items.push({ label: 'Composer une assiette', value: 'compo', icon: 'fork' });
   if (main) items.push({ label: 'Avec ce que j’ai', value: 'what', icon: 'box' });
   items.push({ label: 'Me proposer une recette', value: 'suggest', icon: 'shuffle' });
   if (m && main) items.push({ label: m.dessert || m.cake ? 'Changer le dessert' : 'Ajouter un dessert', value: 'dessert', icon: 'add' });
-  if (m && (plan.isCooked(m) || m.kind === 'reste')) items.push({ label: 'Portions', value: 'portions', icon: 'sliders' });
+  if (m && (plan.isCooked(m) || m.kind === 'reste') && (main || m.kind === 'recette')) items.push({ label: 'Portions', value: 'portions', icon: 'sliders' });
   items.push({ label: 'Commande (Uber Eats…)', value: 'uber', icon: 'bike' });
   items.push({ label: 'Repas libre (resto, invité…)', value: 'libre', icon: 'fork' });
   if (m) items.push({ label: 'Retirer ce repas', value: 'remove', icon: 'trash', danger: true });
@@ -604,6 +652,11 @@ export async function mealActions(day, slot, ctx) {
       break;
     }
     case 'what': ctx.go(`/quoi?day=${day}&slot=${slot}`); break;
+    case 'free': {
+      const r = await freeMealSheet(day, slot);
+      if (r === 'more') return mealActions(day, slot, ctx);
+      break;
+    }
     case 'suggest': {
       const r = plan.suggest(day, slot, { exclude: m?.recipe ? [m.recipe] : [] });
       if (r) {
@@ -621,6 +674,80 @@ export async function mealActions(day, slot, ctx) {
     case 'remove': plan.removeMeal(day, slot); break;
     default: break;
   }
+}
+
+// ---------- Petit-déj et collation libres ----------
+// Comme le dessert : on touche ce qu'on prend, en mesures à l'œil. Enregistré comme une
+// petite assiette composée (cuisinée en une portion). Les recettes restent proposées dessous.
+export async function freeMealSheet(day, slot) {
+  const m = plan.getMeal(day, slot);
+  const s = calc.settings();
+  const cur = m && m.kind === 'compo' ? m : null;
+  const chosen = new Map(cur?.parts || []);
+  const isBreak = slot === 'petitdej';
+  const what = isBreak ? 'petit-déj' : 'collation';
+  const suggest = [...(isBreak ? portions.BREAKFAST_ORDER : portions.SNACK_ORDER), ...recentFree()];
+  const recipes = food.recipes().filter((r) => r.cat === slot && food.usable(r, s)).sort((a, b) => food.recipeStats(a).kcal - food.recipeStats(b).kcal);
+  const extra = `<button type="button" class="chip chip-add" data-other>${icon('add')} Autre aliment</button><button type="button" class="chip chip-add" data-product>${icon('search')} Produit du commerce</button>`;
+  const ui = {};
+  const res = await openSheet({
+    title: `${isBreak ? 'Petit-déj' : 'Collation'}, ${calc.relDay(day).toLowerCase()}`,
+    wide: true,
+    body: `<section class="free-dessert free-meal">
+        <h3 class="group-title">${isBreak ? 'Mon petit-déj' : 'Ma collation'}</h3>
+        <p class="field-help">Touche ce que tu prends, règle la quantité avec − et +. Ce que tu ajoutes toi-même reste proposé la prochaine fois.</p>
+        <div data-eye-box></div>
+        <div class="compo-total" data-total></div>
+        <button type="button" class="btn primary block" data-save-free>Valider ${isBreak ? 'ce petit-déj' : 'cette collation'}</button>
+      </section>
+      ${recipes.length ? `<h3 class="group-title">Ou une recette</h3><div class="list">${recipes.map((r) => dessertRow(r, { on: m?.recipe === r.id, attr: `data-recipe="${esc(r.id)}"` })).join('')}</div>` : ''}
+      <button type="button" class="link-btn" data-more>Autres options (commande, repas libre…)</button>`,
+    onMount(el, api) {
+      const draw = () => {
+        el.querySelector('[data-eye-box]').innerHTML = eyeball({ suggest, ctx: 'dessert', chosen, extra, favKey: slot, ui });
+        const list = [...chosen];
+        const st = food.sumOf(list);
+        el.querySelector('[data-total]').innerHTML = list.length
+          ? `<span class="compo-name">${esc(list.map(([id, q]) => portions.itemLabel(id, q)).join(', ').replace(/^./, (c) => c.toUpperCase()))}</span><span class="compo-figs">${macros(st)} ${priceTag(st.cost)}</span>`
+          : '<span class="fine">Rien de choisi pour l’instant.</span>';
+        el.querySelector('[data-save-free]').disabled = !list.length;
+      };
+      el.addEventListener('click', async (e) => {
+        if (eyeballClick(e, chosen, 'dessert', { favKey: slot, ui })) return draw();
+        if (e.target.closest('[data-other]')) {
+          const id = await pickIngredient({ title: isBreak ? 'Petit-déj' : 'Collation' });
+          if (id) {
+            if (!chosen.has(id)) chosen.set(id, portions.defaultQty(id, 'dessert'));
+            favs.add(slot, id);
+          }
+          return draw();
+        }
+        if (e.target.closest('[data-product]')) {
+          const r = await productSheet({ title: 'Produit du commerce', recent: recentFree() });
+          if (r) {
+            chosen.set(r.id, (chosen.get(r.id) || 0) + r.qty);
+            favs.add(slot, r.id);
+          }
+          return draw();
+        }
+        if (e.target.closest('[data-save-free]')) return api.close({ parts: [...chosen] });
+        const rc = e.target.closest('[data-recipe]');
+        if (rc) return api.close({ recipe: rc.dataset.recipe });
+        if (e.target.closest('[data-more]')) api.close({ more: true });
+      });
+      draw();
+    },
+  });
+  if (!res) return null;
+  if (res.more) return 'more';
+  if (res.recipe) {
+    plan.setMeal(day, slot, { kind: 'recette', recipe: res.recipe, portions: 1 });
+    return true;
+  }
+  if (res.parts.length > 10) toast('10 éléments au plus : les derniers ont été retirés.', { kind: 'error' });
+  plan.setMeal(day, slot, { kind: 'compo', parts: res.parts.slice(0, 10), portions: 1, cooked: 1 });
+  toast(`${isBreak ? 'Petit-déj' : 'Collation'} enregistré${isBreak ? '' : 'e'}.`);
+  return true;
 }
 
 // Ajouter une recette au planning depuis sa fiche
