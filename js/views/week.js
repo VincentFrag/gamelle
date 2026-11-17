@@ -154,9 +154,9 @@ export function renderWeek(view, ctx, startParam) {
         <div class="row-actions"><button class="btn primary" data-fill>${icon('shuffle')} Proposer la semaine</button><a class="btn" href="#/quoi">${icon('box')} Avec ce que j’ai</a></div>
       </section>` : `
       <div class="figures">
-        <div class="figure"><span class="fig-value">${esc(calc.fmtEur(ws.cost).replace(' €', ''))}<small>€</small></span><span class="fig-label">cette semaine${ws.homeAvg != null ? `, ${esc(calc.fmtEur(ws.homeAvg))} le repas` : ''}</span></div>
+        <div class="figure"><span class="fig-value">${esc(calc.fmtEur(ws.cost).replace(/\s€$/, ''))}<small>€</small></span><span class="fig-label">cette semaine${ws.homeAvg != null ? `, ${esc(calc.fmtEur(ws.homeAvg))} le repas` : ''}</span></div>
         <div class="figure"><span class="fig-value">${calc.fmt0(avgKcal)}<small>kcal</small></span><span class="fig-label">par jour${tg.ready ? `, objectif ${calc.fmt0(tg.kcal)}` : ''}</span></div>
-        ${sav && sav.days ? `<div class="figure is-saved"><span class="fig-value">${esc(calc.fmtEur0(sav.saved).replace(' €', ''))}<small>€</small></span><span class="fig-label">économisés sur tes commandes</span></div>` : ''}
+        ${sav && sav.days ? `<div class="figure is-saved"><span class="fig-value">${esc(calc.fmtEur0(sav.saved).replace(/\s€$/, ''))}<small>€</small></span><span class="fig-label">économisés sur tes commandes</span></div>` : ''}
       </div>`}
     ${offers.length > 1 ? `<div class="offer-banner">${icon('box')}<span>${offers.length} gamelles proposées pour les midis, avec la portion en plus de la veille.</span><button class="btn small primary" data-keep-all>Tout garder</button></div>` : ''}
     ${bakes.length ? `<section class="block bakes"><h2 class="group-title">Dessert de la semaine</h2>${bakes.map((b) => bakeCard(b, today)).join('')}</section>` : ''}

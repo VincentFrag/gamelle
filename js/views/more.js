@@ -374,7 +374,7 @@ export function renderHelp(view, ctx) {
       <h2 class="block-title">Aujourd’hui : créatine, whey, poids</h2>
       <p>En haut de l’écran Semaine, la carte « Aujourd’hui » rappelle ta créatine et ton shaker de whey. Tant qu’ils ne sont pas cochés, la carte reste jaune et un point s’affiche sur l’onglet Semaine. Un shaker coché compte dans les calories et protéines du jour. Les pastilles montrent les 7 derniers jours, le chiffre ta série en cours.</p>
       <p>Ton poids se note aussi depuis cette carte, ou dans Bilan : une pesée par jour, idéalement le matin à jeun. Tu peux choisir un autre jour pour ajouter un oubli. Bilan affiche la liste de tes pesées, la moyenne sur 7 jours et la tendance par semaine.</p>
-      <p>« J’ai la flemme » te donne un petit coup de pouce et les options les plus rapides avec ce que tu as. Si tu commandes quand même, note-le : le compteur reste juste.</p>
+      <p>« J’ai la flemme » te donne un mot d’encouragement (« Un autre mot » en change) et des recettes simples à faire avec ce que tu as chez toi, d’après « Ce que j’ai » : d’abord celles où il ne manque rien. En choisir une la met au programme et ouvre le mode cuisine. Si tu commandes quand même, note-le : le compteur reste juste.</p>
       <h2 class="block-title">Petit budget</h2>
       <p>Pour une fin de mois difficile : bouton des propositions de la Semaine, puis « Petit budget », ou automatiquement les 10 derniers jours du mois (Préférences). Gamelle choisit alors des plats équilibrés au plus bas prix, autour de 1,50 à 2 € la portion, en comptant ce que tu as déjà comme gratuit. Le filtre « Petit budget » des recettes les classe du moins cher au plus cher.</p>
       <h2 class="block-title">Assiettes, sauces et desserts</h2>

@@ -7,7 +7,7 @@ import { esc, icon, openSheet, menuSheet, toast, formData } from '../ui.js';
 import { pickIngredient, groupOf, defaultQty, GROUP_LABELS } from './aliments.js';
 
 export function priceTag(eur, { big = false, cls = '' } = {}) {
-  return `<span class="price ${big ? 'is-big' : ''} ${cls}"><span class="price-int">${esc(calc.fmtEur(eur).replace(' €', ''))}</span><span class="price-cur">€</span></span>`;
+  return `<span class="price ${big ? 'is-big' : ''} ${cls}"><span class="price-int">${esc(calc.fmtEur(eur).replace(/\s€$/, ''))}</span><span class="price-cur">€</span></span>`;
 }
 
 export function macros(st, { short = false } = {}) {

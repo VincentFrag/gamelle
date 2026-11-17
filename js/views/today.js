@@ -194,67 +194,93 @@ export function encouragement(m, s = calc.settings(), when = 'ce soir') {
   return numbered.length && Math.random() < 0.65 ? pickOne(numbered) : pickOne(out);
 }
 
-// Ce qu'on peut faire de plus rapide : recettes courtes avec ce qu'il y a, ou une assiette express.
-function quickOptions(s) {
-  const ranked = have.rank().filter((x) => x.r.time <= 20 && x.missing.length <= 1)
-    .sort((a, b) => a.missing.length - b.missing.length || a.r.time - b.r.time);
-  const out = ranked.slice(0, 2).map((x) => ({ r: x.r, missing: x.missing }));
-  if (out.length < 2) {
-    for (const r of food.recipes().filter((x) => x.cat === 'diner' && x.time <= 20 && food.usable(x, s)).sort((a, b) => a.time - b.time)) {
-      if (out.length >= 2) break;
-      if (!out.some((o) => o.r.id === r.id)) out.push({ r, missing: null });
-    }
-  }
-  return out;
+// Recettes simples faites avec ce qu'il y a à la maison (« Ce que j'ai ») :
+// d'abord celles où il ne manque rien, puis celles où il manque un seul ingrédient.
+// Simple = courte (35 min au plus) et pas plus de 8 ingrédients à sortir.
+function simpleFromStock(exclude) {
+  return have.rank()
+    .filter((x) => x.r.id !== exclude && x.r.time <= 35 && (x.r.ing || []).length <= 8 && x.missing.length <= 1)
+    .sort((a, b) => a.missing.length - b.missing.length || b.soon.length - a.soon.length || a.r.time - b.r.time)
+    .slice(0, 3);
 }
 
 export async function flemmeSheet(ctx) {
   const s = calc.settings();
   const today = calc.localDay();
   const slot = new Date().getHours() < 15 ? 'midi' : 'soir';
+  const when = slot === 'midi' ? 'ce midi' : 'ce soir';
   const m = plan.getMeal(today, slot);
   const cooked = m && plan.isCooked(m) && !m.done ? m : null;
-  const quick = quickOptions(s).filter((o) => !cooked || o.r.id !== cooked.recipe);
+  const stockKnown = store.all('stock').length > 0;
+  const simple = simpleFromStock(cooked?.recipe);
   const plate = have.plateFromStock();
   const r = cooked && cooked.kind === 'recette' ? food.recipe(cooked.recipe) : null;
-  const msg = encouragement(cooked, s, slot === 'midi' ? 'ce midi' : 'ce soir');
-  const quickRow = (o) => {
-    const st = food.recipeStats(o.r);
-    const miss = o.missing == null ? '' : o.missing.length ? `, il te manque : ${o.missing.map((id) => food.ingredient(id)?.name.toLowerCase()).join(', ')}` : ', tu as tout';
-    return `<button type="button" class="list-row" data-quick="${esc(o.r.id)}"><span class="list-main">${esc(o.r.name)}<small>${o.r.time} min, ${calc.fmt0(st.p)} g de protéines${esc(miss)}</small></span>${priceTag(st.cost)}</button>`;
+  let msg = encouragement(cooked, s, when);
+  const row = (x) => {
+    const st = food.recipeStats(x.r);
+    const miss = x.missing.length ? `il te manque : ${x.missing.map((id) => food.ingredient(id)?.name.toLowerCase()).join(', ')}` : 'tu as tout';
+    const soon = x.soon.length ? `, utilise ${x.soon.map((id) => food.ingredient(id)?.name.toLowerCase()).join(', ')} à finir` : '';
+    return `<button type="button" class="list-row" data-quick="${esc(x.r.id)}"><span class="list-main">${esc(x.r.name)}<small>${x.r.time} min, ${esc(miss)}${esc(soon)}</small></span>${priceTag(st.cost)}</button>`;
   };
+  let home;
+  if (!stockKnown) {
+    home = `<div class="flemme-empty">
+        <p>Coche ce que tu as au frigo, au congélateur et au placard : Gamelle te proposera une recette simple à faire avec.</p>
+        <button type="button" class="btn primary" data-stock>${icon('check')} Cocher ce que j’ai</button>
+      </div>`;
+  } else if (!simple.length && !plate) {
+    home = `<div class="flemme-empty">
+        <p>Avec ce qui est coché, pas de recette simple complète. Mets à jour ce que tu as, ou regarde ce qui s’en approche.</p>
+        <div class="row-actions"><button type="button" class="btn" data-stock>Mettre à jour ce que j’ai</button><button type="button" class="btn" data-what>Ce qui s’en approche</button></div>
+      </div>`;
+  } else {
+    home = `<div class="list wrap-list">
+        ${plate ? `<button type="button" class="list-row" data-plate><span class="list-main">Assiette express : ${esc(food.compoTitle(plate.parts, plate.sauce).toLowerCase())}<small>Le plus simple, tu as tout</small></span>${priceTag(food.compoStats(plate.parts, plate.sauce).cost)}</button>` : ''}
+        ${simple.map(row).join('')}
+      </div>
+      <button type="button" class="link-btn" data-what>Voir tout ce que je peux cuisiner</button>`;
+  }
   const res = await openSheet({
     title: 'Flemme de cuisiner ?',
     wide: true,
-    body: `<p class="pep">${icon('spark')}<span>${esc(msg)}</span></p>
-      ${cooked ? `<div class="list"><button type="button" class="list-row is-main" data-go><span class="list-main">${esc(plan.mealTitle(cooked))}<small>Ton plat prévu${r ? `, ${r.time} min` : ''}</small></span><span class="btn small primary">${icon('pot')} Je m’y mets</span></button></div>` : ''}
-      ${quick.length || plate ? `<h3 class="group-title">${cooked ? 'Ou plus rapide' : 'Le plus rapide'}</h3>
-        <div class="list">
-          ${plate ? `<button type="button" class="list-row" data-plate><span class="list-main">Assiette express : ${esc(food.compoTitle(plate.parts, plate.sauce).toLowerCase())}<small>Avec ce que tu as à la maison</small></span>${priceTag(food.compoStats(plate.parts, plate.sauce).cost)}</button>` : ''}
-          ${quick.map(quickRow).join('')}
-        </div>` : ''}
-      <button type="button" class="btn ghost block" data-order>Tant pis, je commande</button>
+    body: `<div class="pep big">${icon('spark')}<div><p data-msg>${esc(msg)}</p><button type="button" class="link-btn" data-more>Un autre mot</button></div></div>
+      <h3 class="group-title">Une recette simple avec ce que tu as</h3>
+      ${home}
+      ${cooked ? `<h3 class="group-title">Ou ton plat prévu</h3><div class="list"><button type="button" class="list-row" data-go><span class="list-main">${esc(plan.mealTitle(cooked))}<small>${r ? `${r.time} min` : 'Assiette composée'}</small></span>${icon('chevron', 'row-chevron')}</button></div>` : ''}
+      <button type="button" class="btn ghost block flemme-order" data-order>Tant pis, je commande</button>
       <p class="fine center">Ça arrive. La noter garde ton compteur d’économies honnête.</p>`,
     onMount(el, api) {
       el.addEventListener('click', (e) => {
+        if (e.target.closest('[data-more]')) {
+          let next = msg;
+          for (let i = 0; i < 8 && next === msg; i++) next = encouragement(cooked, s, when);
+          msg = next;
+          el.querySelector('[data-msg]').textContent = msg;
+          return;
+        }
         if (e.target.closest('[data-go]')) return api.close({ go: true });
         const q = e.target.closest('[data-quick]');
         if (q) return api.close({ quick: q.dataset.quick });
         if (e.target.closest('[data-plate]')) return api.close({ plate: true });
+        if (e.target.closest('[data-stock]')) return api.close({ to: '/frigo' });
+        if (e.target.closest('[data-what]')) return api.close({ to: '/quoi' });
         if (e.target.closest('[data-order]')) api.close({ order: true });
       });
     },
   });
   if (!res) return;
+  if (res.to) return ctx.go(res.to);
   if (res.go) {
     if (cooked.kind === 'compo') return prepSheet(cooked, ctx);
     return ctx.go(`/cuisine/${cooked.recipe}?p=${cooked.cooked ?? 1}&meal=${encodeURIComponent(cooked.id)}${cooked.mc ? '&mc=1' : ''}`);
   }
   if (res.quick) {
+    // La recette remplace le repas prévu, et on passe directement en mode cuisine.
     const rq = food.recipe(res.quick);
     plan.setMeal(today, slot, { kind: 'recette', recipe: rq.id, portions: 1 });
-    toast(`C’est parti : ${rq.name}.`, { action: 'Cuisiner', duration: 6000, onAction: () => ctx.go(`/cuisine/${rq.id}?p=${plan.getMeal(today, slot)?.cooked ?? 1}&meal=${encodeURIComponent(plan.mealId(today, slot))}`) });
-    return;
+    const nm = plan.getMeal(today, slot);
+    toast(`C’est parti : ${rq.name}. Tu le retrouves dans ta semaine.`);
+    return ctx.go(`/cuisine/${rq.id}?p=${nm?.cooked ?? 1}&meal=${encodeURIComponent(nm?.id || `${today}:${slot}`)}`);
   }
   if (res.plate) {
     plan.setMeal(today, slot, { kind: 'compo', parts: plate.parts, sauce: plate.sauce, portions: 1 });

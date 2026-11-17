@@ -68,9 +68,9 @@ export function renderBilan(view, ctx) {
     <section class="block">
       <h2 class="block-title">Dépenses</h2>
       <div class="figures quad">
-        <div class="figure"><span class="fig-value">${esc(calc.fmtEur0(st.cost).replace(' €', ''))}<small>€</small></span><span class="fig-label">au total${p.month ? ' ce mois-ci' : ''}</span></div>
-        <div class="figure"><span class="fig-value">${filled.length ? esc(calc.fmtEur(st.cost / filled.length).replace(' €', '')) : '–'}<small>€</small></span><span class="fig-label">par jour</span></div>
-        <div class="figure"><span class="fig-value">${st.homeAvg != null ? esc(calc.fmtEur(st.homeAvg).replace(' €', '')) : '–'}<small>€</small></span><span class="fig-label">le repas maison</span></div>
+        <div class="figure"><span class="fig-value">${esc(calc.fmtEur0(st.cost).replace(/\s€$/, ''))}<small>€</small></span><span class="fig-label">au total${p.month ? ' ce mois-ci' : ''}</span></div>
+        <div class="figure"><span class="fig-value">${filled.length ? esc(calc.fmtEur(st.cost / filled.length).replace(/\s€$/, '')) : '–'}<small>€</small></span><span class="fig-label">par jour</span></div>
+        <div class="figure"><span class="fig-value">${st.homeAvg != null ? esc(calc.fmtEur(st.homeAvg).replace(/\s€$/, '')) : '–'}<small>€</small></span><span class="fig-label">le repas maison</span></div>
         <div class="figure"><span class="fig-value">${st.uber}</span><span class="fig-label">commande${st.uber > 1 ? 's' : ''}${st.uber ? `, ${esc(calc.fmtEur0(st.uberCost))}` : ''}</span></div>
       </div>
       ${view$.mode === 'semaine' && filled.length ? `<p class="fine">Sur un mois à ce rythme : environ ${esc(calc.fmtEur0((st.cost / filled.length) * 30.4))}.</p>` : ''}

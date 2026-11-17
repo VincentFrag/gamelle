@@ -1083,7 +1083,7 @@ body[data-tab='plus'] { --sec: var(--sec-plus); }
 .pill-btn.is-done .icon { color: var(--accent); }
 .today-line .icon-btn.small { margin-left: -4px; }
 .chart-legend + .group-title, .chart-box + .group-title, .figures + .group-title { margin-top: 18px; }
-.off-list .list-main small { white-space: normal; }
+.off-list .list-main small, .wrap-list .list-main small { white-space: normal; }
 .pep.ok { background: var(--accent-soft); }
 .pep.ok .icon { color: var(--accent); }
 .tonight .btn { white-space: normal; text-align: left; line-height: 1.2; padding-top: 8px; padding-bottom: 8px; }
@@ -1093,3 +1093,9 @@ body[data-tab='plus'] { --sec: var(--sec-plus); }
   .pill-btn .icon { width: 17px; height: 17px; }
   .today-line, .today-actions { gap: 6px; }
 }
+.pep.big { flex-direction: row; }
+.pep.big p { margin: 0 0 4px; font-size: 18px; line-height: 1.4; }
+.pep .link-btn { min-height: 32px; padding: 0; color: var(--c-dessert); font-weight: 600; font-size: 14px; }
+.flemme-empty { padding: 14px; border: 1px dashed var(--line); border-radius: var(--radius); }
+.flemme-empty p { margin: 0 0 10px; color: var(--ink-2); }
+.flemme-order { margin-top: 18px; }

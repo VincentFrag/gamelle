@@ -90,8 +90,8 @@ const nfEur = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximum
 
 export const fmt0 = (n) => nf0.format(Math.round(n || 0));
 export const fmt1 = (n) => nf1.format(n || 0);
-export const fmtEur = (n) => `${nfEur.format(n || 0)} €`;
-export const fmtEur0 = (n) => `${nf0.format(Math.round(n || 0))} €`;
+export const fmtEur = (n) => `${nfEur.format(n || 0)}\u00a0€`;
+export const fmtEur0 = (n) => `${nf0.format(Math.round(n || 0))}\u00a0€`;
 
 export function fmtSigned(n, digits = 1) {
   const s = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(Math.abs(n));
