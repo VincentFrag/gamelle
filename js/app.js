@@ -2,6 +2,7 @@
 import * as store from './store.js';
 import * as sync from './sync.js';
 import * as calc from './calc.js';
+import * as habits from './habits.js';
 import { esc, icon, $, toast } from './ui.js';
 import { renderWeek } from './views/week.js';
 import { renderRecipes, renderRecipe, renderRecipeEdit } from './views/recipes.js';
@@ -9,11 +10,12 @@ import { renderCook } from './views/cook.js';
 import { renderShop, renderStock } from './views/courses.js';
 import { renderBilan } from './views/bilan.js';
 import { renderHave, renderWhat, renderPantry } from './views/have.js';
+import { renderAliments } from './views/aliments.js';
 import {
   renderMore, renderProfile, renderPrefs, renderPrices, renderAccount, renderBackup, renderHelp,
 } from './views/more.js';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 const routes = [
   [/^\/semaine$/, renderWeek, 'semaine'],
@@ -29,6 +31,7 @@ const routes = [
   [/^\/frigo$/, renderHave, 'courses'],
   [/^\/quoi$/, renderWhat, 'courses'],
   [/^\/placard$/, renderPantry, 'courses'],
+  [/^\/aliments$/, (v, c) => renderAliments(v, c, { back: '/recettes', title: 'Aliments' }), 'recettes'],
   [/^\/bilan$/, renderBilan, 'bilan'],
   [/^\/plus$/, renderMore, 'plus'],
   [/^\/profil$/, renderProfile, 'plus'],
@@ -50,6 +53,7 @@ const NAV = [
 let cleanups = [];
 let pendingRender = false;
 let currentPath = null;
+let lastDay = calc.localDay();
 
 export const ctx = {
   version: APP_VERSION,
@@ -93,6 +97,15 @@ function pageHead(title, { back = null, actions = '', sub = '' } = {}) {
   </header>`;
 }
 
+// Point sur l'onglet Semaine tant que la créatine ou le shaker du jour n'est pas coché.
+function updateNavDot() {
+  const a = document.querySelector('[data-nav="semaine"]');
+  if (!a) return;
+  const n = habits.pending().length;
+  a.classList.toggle('has-dot', n > 0);
+  a.setAttribute('aria-label', n ? `Semaine, ${n === 2 ? 'créatine et whey' : 'une habitude'} à prendre aujourd’hui` : 'Semaine');
+}
+
 function updateSyncPills() {
   const [cls, label] = syncLabel(sync.state);
   for (const el of document.querySelectorAll('[data-sync-pill]')) {
@@ -129,6 +142,8 @@ function render() {
     if (a.dataset.nav === match.tab) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   }
+  document.body.dataset.tab = match.tab;
+  updateNavDot();
   document.body.classList.toggle('is-cooking', path.startsWith('/cuisine/'));
   if (!path.startsWith('/cuisine/')) wake.disable();
   const view = document.createElement('div');
@@ -494,10 +509,13 @@ async function start() {
     if (d.remote || d.wipe) renderWhenIdle();
   });
   sync.onStatus(updateSyncPills);
-  store.onChange(() => updateSyncPills());
+  store.onChange(() => { updateSyncPills(); updateNavDot(); });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       timers.draw();
+      updateNavDot();
+      // la journée a changé depuis la dernière ouverture : on redessine pour la carte « Aujourd'hui »
+      if (lastDay !== calc.localDay()) { lastDay = calc.localDay(); renderWhenIdle(); }
       if (wake.want) wake.enable();
     }
   });

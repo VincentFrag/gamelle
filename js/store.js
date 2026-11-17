@@ -4,7 +4,7 @@
 // Une seule table, `gamelle` : une ligne par objet, repérée par (kind, id). Le contenu est dans data (JSON).
 //   kinds : meal (repas planifié), recipe (recette perso), ingredient (prix modifié ou ingrédient perso),
 //           stock (réserves), list (liste de courses d'une semaine), settings (réglages),
-//           weight (pesée : id = le jour, data = { weight }), bake (dessert de la semaine, en parts),
+//           weight (journal du jour : id = le jour, data = { weight, creatine, shakes }), bake (dessert de la semaine, en parts),
 //           pantry (fond de placard racheté chaque semaine ou chaque mois)
 // Gamelle ne lit ni n'écrit aucune table de Fonte.
 
@@ -149,7 +149,24 @@ export function batch(fn) {
   return res;
 }
 
-// ---------- Pesées ----------
+// ---------- Journal du jour : pesée, créatine, shakers ----------
+// Une ligne par jour (kind « weight », id = AAAA-MM-JJ). Les champs sont indépendants :
+// modifier la créatine ne touche pas à la pesée, et inversement.
+export function dayLog(day) {
+  const r = get('weight', day);
+  return r ? { ...r.data } : {};
+}
+
+export function patchDayLog(day, partial) {
+  const next = { ...dayLog(day), ...partial };
+  for (const k of Object.keys(next)) if (next[k] == null || next[k] === false || next[k] === 0) delete next[k];
+  if (!Object.keys(next).length) {
+    remove('weight', day);
+    return true;
+  }
+  return Boolean(put('weight', day, next));
+}
+
 export function weights() {
   return all('weight')
     .filter((r) => r.data && r.data.weight != null)
@@ -157,11 +174,11 @@ export function weights() {
 }
 
 export function saveWeight(day, weight) {
-  return put('weight', day, { weight });
+  return patchDayLog(day, { weight });
 }
 
 export function removeWeight(day) {
-  remove('weight', day);
+  return patchDayLog(day, { weight: null });
 }
 
 // ---------- Synchronisation ----------

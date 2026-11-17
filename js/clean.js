@@ -111,6 +111,8 @@ function ingredient(d) {
     buy: num(d.buy, 0.1, 100000),
     buyLabel: str(d.buyLabel, 60),
     staple: typeof d.staple === 'boolean' ? d.staple : null,
+    // Origine des valeurs (« Open Food Facts 3017620422003 », « étiquette »…)
+    src: str(d.src, 80),
   });
 }
 
@@ -151,6 +153,7 @@ function settings(d) {
   const u = d.uber && typeof d.uber === 'object' ? d.uber : {};
   const s = d.slots && typeof d.slots === 'object' ? d.slots : {};
   const e = d.equip && typeof d.equip === 'object' ? d.equip : {};
+  const h = d.habits && typeof d.habits === 'object' ? d.habits : {};
   return {
     profile: drop({
       sex: oneOf(p.sex, ['h', 'f'], null),
@@ -174,18 +177,35 @@ function settings(d) {
     uber: drop({ avg: num(u.avg, 0, 500) ?? 22, perWeek: num(u.perWeek, 0, 21) ?? 3, kcal: num(u.kcal, 0, 5000, { int: true }) ?? 1100 }),
     libreKcal: num(d.libreKcal, 0, 5000, { int: true }) ?? 800,
     start: day(d.start),
+    // Petit budget (fin de mois) : manuel, ou automatique les 10 derniers jours du mois
+    serre: d.serre === true,
+    serreAuto: d.serreAuto === true,
+    // Habitudes du jour : créatine et shaker de whey
+    habits: drop({
+      creatine: h.creatine !== false,
+      whey: h.whey !== false,
+      wheyG: num(h.wheyG, 5, 100, { int: true }) ?? 30,
+      dose: str(h.dose, 30) || '1 scoop',
+    }),
     theme: oneOf(d.theme, ['auto', 'light', 'dark'], 'auto'),
     wakeLock: d.wakeLock !== false,
     sound: d.sound !== false,
   };
 }
 
-// Pesée : l'identifiant est le jour (AAAA-MM-JJ), la donnée est le poids en kg.
+// Journal du jour (kind « weight », identifiant = le jour AAAA-MM-JJ) :
+// pesée en kg, créatine prise, nombre de shakers de whey. Tout est facultatif.
 function weight(d, rid) {
   if (!day(rid)) return null;
-  const raw = Number(d.weight);
-  if (!Number.isFinite(raw) || raw < 20 || raw > 500) return null;   // refusé, pas ramené à la limite
-  return { weight: Math.round(raw * 10) / 10 };
+  const out = {};
+  if (d.weight != null && d.weight !== '') {
+    const raw = Number(d.weight);
+    if (Number.isFinite(raw) && raw >= 20 && raw <= 500) out.weight = Math.round(raw * 10) / 10; // refusé, pas ramené à la limite
+  }
+  if (d.creatine === true) out.creatine = true;
+  const sh = num(d.shakes, 0, 5, { int: true });
+  if (sh) out.shakes = sh;
+  return Object.keys(out).length ? out : null;
 }
 
 const CLEANERS = { meal, recipe, ingredient, stock, list, settings, weight, bake, pantry };

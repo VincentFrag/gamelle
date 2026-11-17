@@ -4,6 +4,7 @@ import * as food from '../food.js';
 import * as plan from '../plan.js';
 import * as have from '../have.js';
 import { esc, icon, openSheet, menuSheet, toast, formData } from '../ui.js';
+import { pickIngredient, groupOf, defaultQty, GROUP_LABELS } from './aliments.js';
 
 export function priceTag(eur, { big = false, cls = '' } = {}) {
   return `<span class="price ${big ? 'is-big' : ''} ${cls}"><span class="price-int">${esc(calc.fmtEur(eur).replace(' €', ''))}</span><span class="price-cur">€</span></span>`;
@@ -96,13 +97,17 @@ export function pickRecipe({ title = 'Choisir une recette', cat = null, cats = [
 }
 
 // ---------- Saisie d'un repas hors recette (commande, repas libre) ----------
-function outsideSheet(day, slot, kind, cur) {
+export function outsideSheet(day, slot, kind, cur) {
   const s = calc.settings();
   const isUber = kind === 'uber';
+  const planned = plan.getMeal(day, slot);
+  const plannedSt = isUber && planned && plan.isCooked(planned) && !planned.done ? plan.mealStats(planned, s) : null;
+  const plannedR = plannedSt && planned.kind === 'recette' ? food.recipe(planned.recipe) : null;
   return openSheet({
     title: isUber ? 'Commande' : 'Repas libre',
     body: `<form class="form" data-form>
       <p>${isUber ? 'Note la commande pour garder un compteur honnête. Le prix et les calories sont pré-remplis avec tes valeurs habituelles.' : 'Restaurant, repas chez des amis, cantine… Une estimation suffit.'}</p>
+      ${plannedSt ? `<p class="pep small">${icon('spark')}<span>Le plat prévu, ${esc(plan.mealTitle(planned).toLowerCase())}, c’était ${esc(calc.fmtEur(plannedSt.cost))}${plannedR ? ` et ${plannedR.time} minutes` : ''}. Si tu changes d’avis, ferme simplement cette fenêtre.</span></p>` : ''}
       <label class="field"><span>Description</span><input name="label" maxlength="80" value="${esc(cur?.label || '')}" placeholder="${isUber ? 'Ex. : burger frites' : 'Ex. : resto avec l’équipe'}"></label>
       <div class="field-row">
         <label class="field"><span>Prix (€)</span><input name="cost" inputmode="decimal" value="${esc(calc.numInput(cur?.cost ?? (isUber ? s.uber.avg : null)))}"></label>
@@ -188,36 +193,48 @@ function offerLeftover(day, slot, ctx) {
 }
 
 // ---------- Assiette composée ----------
-// Un féculent, une protéine, un légume et une sauce, tous facultatifs.
+// Féculent, protéine, légume, « en plus » et une sauce : tout est facultatif, plusieurs choix
+// possibles par famille. « Autre… » ouvre tous les aliments, y compris ceux ajoutés depuis Open Food Facts.
+const GROUPS = ['feculent', 'proteine', 'legume', 'extra'];
+const MAX_PARTS = 6;
+
 export function compoSheet({ day = null, slot = null, cur = null, sauce = null } = {}) {
   const s = calc.settings();
-  const pick = {};
-  for (const [id] of cur?.parts || []) {
-    const it = food.compoItem(id);
-    if (it) pick[it.group] = id;
+  // id → { group, qty } dans l'ordre de choix
+  const pick = new Map();
+  for (const [id, q] of cur?.parts || []) {
+    const ing = food.ingredient(id);
+    if (ing) pick.set(id, { group: groupOf(ing), qty: q });
   }
   let sauceId = cur ? cur.sauce || null : sauce;
   const sauces = food.recipes().filter((r) => r.cat === 'sauce').sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const cookedDefault = cur?.cooked ?? (slot ? plan.defaultCooked(slot, s) : 2);
+  const itemsOf = (g) => {
+    const base = g === 'extra' ? [] : food.COMPO[g].items.map(([id, q]) => [id, q]);
+    for (const [id, p] of pick) if (p.group === g && !base.some(([x]) => x === id)) base.push([id, p.qty]);
+    return base;
+  };
   const chip = (group, [id, q]) => {
     const ing = food.ingredient(id);
     if (!ing) return '';
-    return `<button type="button" class="chip ${pick[group] === id ? 'is-on' : ''} ${have.has(id) ? 'has-dot' : ''}" data-part="${group}" data-id="${esc(id)}">${esc(ing.name)}<small>${esc(food.fmtQty(ing, q))}</small></button>`;
+    return `<button type="button" class="chip ${pick.has(id) ? 'is-on' : ''} ${have.has(id) ? 'has-dot' : ''}" data-part="${group}" data-id="${esc(id)}" aria-pressed="${pick.has(id)}">${esc(ing.name)}<small>${esc(food.fmtQty(ing, pick.get(id)?.qty ?? q))}</small></button>`;
   };
-  const parts = () => food.COMPO_ORDER.filter((g) => pick[g]).map((g) => [pick[g], food.compoItem(pick[g]).qty]);
+  const groupsHtml = () => GROUPS.map((g) => `<fieldset class="compo-group g-${g}"><legend>${esc(GROUP_LABELS[g])}${g === 'extra' ? ' <small>fromage, avocat, graines…</small>' : ''}</legend>
+      <div class="chips tight">${itemsOf(g).map((it) => chip(g, it)).join('')}<button type="button" class="chip chip-add" data-other="${g}">${icon('add')} ${g === 'extra' ? 'Ajouter' : 'Autre'}</button></div></fieldset>`).join('');
+  const parts = () => GROUPS.flatMap((g) => [...pick].filter(([, p]) => p.group === g).map(([id, p]) => [id, p.qty]));
   return openSheet({
     title: cur?.id ? 'Modifier l’assiette' : 'Composer une assiette',
     wide: true,
     body: `<form class="form compo" data-form>
       ${day ? '' : whenFields(['soir', 'midi'])}
-      <p class="field-help">Choisis ce que tu veux, tout est facultatif. Quantités pour une portion. ${icon('check', 'dot-ico')} : tu en as à la maison.</p>
-      ${food.COMPO_ORDER.map((g) => `<fieldset class="compo-group"><legend>${esc(food.COMPO[g].label)}</legend>
-        <div class="chips tight">${food.COMPO[g].items.map((it) => chip(g, it)).join('')}</div></fieldset>`).join('')}
-      <fieldset class="compo-group"><legend>Sauce</legend>
+      <p class="field-help">Choisis ce que tu veux, tout est facultatif, plusieurs choix possibles. ${icon('check', 'dot-ico')} : tu en as à la maison.</p>
+      <div data-groups>${groupsHtml()}</div>
+      <fieldset class="compo-group g-sauce"><legend>Sauce</legend>
         <div class="chips tight">
           <button type="button" class="chip ${!sauceId ? 'is-on' : ''}" data-sauce="">Sans sauce</button>
           ${sauces.map((r) => `<button type="button" class="chip ${sauceId === r.id ? 'is-on' : ''}" data-sauce="${esc(r.id)}">${esc(r.name.replace(/^Sauce\s+/i, '').replace(/^./, (c) => c.toUpperCase()))}</button>`).join('')}
         </div></fieldset>
+      <div data-qty></div>
       <div class="compo-total" data-total></div>
       <label class="field small-field"><span>Portions cuisinées</span><input name="cooked" inputmode="decimal" value="${esc(calc.numInput(cookedDefault))}"></label>
     </form>`,
@@ -233,13 +250,55 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
         box.innerHTML = `<span class="compo-name">${esc(food.compoTitle(p, sauceId))}</span>
           <span class="compo-figs">${macros(st)} ${priceTag(st.cost)}</span>`;
       };
-      el.addEventListener('click', (e) => {
+      const qtyList = () => {
+        const p = parts();
+        el.querySelector('[data-qty]').innerHTML = p.length ? `<p class="group-title">Quantités pour une portion</p><div class="ing-edit">${p.map(([id, q]) => {
+          const ing = food.ingredient(id);
+          return `<div class="ing-row"><span class="ing-row-name">${esc(ing.name)}</span><label class="ing-row-qty"><input inputmode="decimal" data-qty-id="${esc(id)}" value="${esc(calc.numInput(q))}" aria-label="Quantité de ${esc(ing.name)}">${ing.unit === 'pc' ? 'pièce' : ing.unit}</label><button type="button" class="icon-btn" data-unpick="${esc(id)}" aria-label="Retirer ${esc(ing.name)}">${icon('close')}</button></div>`;
+        }).join('')}</div>` : '';
+      };
+      const redraw = () => {
+        el.querySelector('[data-groups]').innerHTML = groupsHtml();
+        qtyList();
+        total();
+      };
+      el.addEventListener('input', (e) => {
+        const q = e.target.closest('[data-qty-id]');
+        if (!q) return;
+        const v = calc.parseNum(q.value);
+        const p = pick.get(q.dataset.qtyId);
+        if (p && v > 0 && v < 5000) {
+          p.qty = v;
+          const ing = food.ingredient(q.dataset.qtyId);
+          const c = el.querySelector(`[data-part][data-id="${CSS.escape(q.dataset.qtyId)}"] small`);
+          if (c) c.textContent = food.fmtQty(ing, v);
+          total();
+        }
+      });
+      el.addEventListener('click', async (e) => {
         const c = e.target.closest('[data-part]');
         if (c) {
-          const g = c.dataset.part;
-          pick[g] = pick[g] === c.dataset.id ? null : c.dataset.id;
-          el.querySelectorAll(`[data-part="${g}"]`).forEach((b) => b.classList.toggle('is-on', b.dataset.id === pick[g]));
-          return total();
+          const id = c.dataset.id;
+          if (pick.has(id)) pick.delete(id);
+          else if (pick.size >= MAX_PARTS) return toast(`${MAX_PARTS} éléments au plus dans une assiette.`, { kind: 'error' });
+          else {
+            const it = food.compoItem(id);
+            pick.set(id, { group: c.dataset.part, qty: it ? it.qty : defaultQty(food.ingredient(id), c.dataset.part) });
+          }
+          return redraw();
+        }
+        const un = e.target.closest('[data-unpick]');
+        if (un) {
+          pick.delete(un.dataset.unpick);
+          return redraw();
+        }
+        const o = e.target.closest('[data-other]');
+        if (o) {
+          if (pick.size >= MAX_PARTS) return toast(`${MAX_PARTS} éléments au plus dans une assiette.`, { kind: 'error' });
+          const g = o.dataset.other;
+          const id = await pickIngredient({ title: GROUP_LABELS[g], group: g });
+          if (id && !pick.has(id)) pick.set(id, { group: g, qty: defaultQty(food.ingredient(id), g) });
+          return redraw();
         }
         const sc = e.target.closest('[data-sauce]');
         if (sc) {
@@ -248,6 +307,7 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
           total();
         }
       });
+      qtyList();
       total();
     },
     actions: [
@@ -273,11 +333,13 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
 }
 
 // Comment préparer une assiette composée : cuisson de chaque élément puis la sauce.
-function prepSheet(m, ctx) {
+export function prepSheet(m, ctx) {
   const lines = [];
   for (const [id] of m.parts || []) {
     const it = food.compoItem(id);
-    if (it) lines.push({ t: it.how, s: it.s, label: food.ingredient(id)?.name || '' });
+    const name = food.ingredient(id)?.name || '';
+    if (it) lines.push({ t: it.how, s: it.s, label: name });
+    else if (name) lines.push({ t: `${name} : à préparer à ta façon.`, s: 0, label: name });
   }
   const sr = m.sauce && food.recipe(m.sauce);
   return openSheet({

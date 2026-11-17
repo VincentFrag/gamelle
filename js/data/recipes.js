@@ -244,6 +244,68 @@ export const RECIPES = [
       { t: 'Ajoute les épinards : 4 min / 100 °C / sens inverse / vitesse 1.', s: 240 },
     ],
   },
+  // ---------- Petit budget (fin de mois) : équilibrés, autour de 1,50 à 2 € la portion ----------
+  {
+    id: 'b-pates-oeufs-pois', name: 'Pâtes aux œufs, petits pois et emmental', cat: 'diner', style: 'equilibre',
+    time: 20, serves: 2, equip: ['plaques'], freeze: false, gamelle: true, tags: ['vege', 'budget', 'rapide'],
+    ing: [['pates', 180], ['oeuf', 4], ['petits_pois', 200], ['emmental', 30], ['oignon', 0.5], ['huile', 5]],
+    steps: [
+      { t: 'Fais cuire les pâtes dans l’eau bouillante salée, avec les petits pois les 5 dernières minutes.', s: 600 },
+      { t: 'Pendant ce temps, fais revenir l’oignon émincé dans l’huile. Bats les œufs avec l’emmental et du poivre.', s: 240 },
+      { t: 'Égoutte en gardant un fond d’eau de cuisson. Hors du feu, mélange les pâtes, l’oignon et les œufs : la chaleur les fait prendre en crème. Ajoute un peu d’eau de cuisson si c’est trop épais.' },
+    ],
+    tip: 'Hors du feu, sinon les œufs font des grumeaux.',
+  },
+  {
+    id: 'b-riz-haricots', name: 'Riz, haricots rouges à la tomate et œufs', cat: 'diner', style: 'equilibre',
+    time: 25, serves: 2, equip: ['plaques'], freeze: true, gamelle: true, tags: ['vege', 'budget'],
+    ing: [['riz', 150], ['haricots_rouges', 265], ['tomates_concassees', 400], ['oignon', 1], ['oeuf', 3],
+      ['cumin', 2], ['paprika', 2], ['huile', 10]],
+    steps: [
+      { t: 'Fais cuire le riz.', s: 660 },
+      { t: 'Fais revenir l’oignon haché dans l’huile avec le cumin et le paprika.', s: 240 },
+      { t: 'Ajoute les tomates et les haricots rincés, laisse mijoter.', s: 600 },
+      { t: 'Creuse des puits dans la sauce, casse les œufs dedans, couvre et laisse cuire jusqu’à ce que le blanc soit pris.', s: 360 },
+      { t: 'Sers sur le riz.' },
+    ],
+  },
+  {
+    id: 'b-tortilla', name: 'Tortilla de pommes de terre et carottes râpées', cat: 'diner', style: 'equilibre',
+    time: 40, serves: 2, equip: ['plaques'], freeze: false, gamelle: true, tags: ['vege', 'budget', 'froid'],
+    ing: [['pdt', 500], ['oeuf', 6], ['oignon', 1], ['huile', 15], ['carotte', 3], ['fromage_blanc', 200],
+      ['moutarde', 5], ['vinaigre', 10]],
+    steps: [
+      { t: 'Coupe les pommes de terre en fines tranches et l’oignon en lamelles. Fais-les cuire à feu doux dans l’huile, à couvert, en remuant de temps en temps.', s: 1200 },
+      { t: 'Bats les œufs avec sel et poivre, ajoute les pommes de terre, remets dans la poêle à feu doux.', s: 480 },
+      { t: 'Retourne la tortilla à l’aide d’une assiette et laisse cuire l’autre face.', s: 240 },
+      { t: 'Râpe les carottes, assaisonne avec la moutarde et le vinaigre. Sers avec le fromage blanc salé, poivré.' },
+    ],
+    tip: 'Se mange aussi froide, en parts : idéale pour la gamelle.',
+  },
+  {
+    id: 'b-lentilles-oeufs', name: 'Lentilles aux carottes et œufs mollets', cat: 'diner', style: 'leger',
+    time: 35, serves: 2, equip: ['plaques'], freeze: false, gamelle: true, tags: ['vege', 'budget'],
+    ing: [['lentilles_vertes', 160], ['carotte', 3], ['oignon', 1], ['bouillon', 1], ['oeuf', 4], ['moutarde', 10],
+      ['huile_olive', 10], ['herbes', 1], ['pain_complet', 80]],
+    steps: [
+      { t: 'Mets les lentilles, les carottes en rondelles, l’oignon coupé et le cube de bouillon dans 3 fois leur volume d’eau froide. Porte à ébullition puis laisse cuire.', s: 1500 },
+      { t: 'Fais cuire les œufs 6 minutes dans l’eau bouillante, refroidis-les et écale-les.', s: 360 },
+      { t: 'Égoutte les lentilles, mélange-les avec la moutarde, l’huile et les herbes.' },
+      { t: 'Sers avec les œufs mollets coupés en deux et le pain.' },
+    ],
+  },
+  {
+    id: 'b-cuisses-riz', name: 'Hauts de cuisse de poulet, riz et carottes rôties', cat: 'diner', style: 'equilibre',
+    time: 45, serves: 2, equip: ['four', 'plaques'], freeze: true, gamelle: true, tags: ['volaille', 'budget'],
+    ing: [['poulet_cuisse', 300], ['riz', 150], ['carotte', 4], ['oignon', 1], ['ail', 2], ['paprika', 3], ['huile', 10]],
+    steps: [
+      { t: 'Préchauffe le four à 200 °C. Mets le poulet, les carottes en bâtonnets et l’oignon en quartiers sur une plaque, avec l’ail écrasé, le paprika, l’huile, sel et poivre.' },
+      { t: 'Enfourne en retournant à mi-cuisson.', s: 1800 },
+      { t: 'Pendant ce temps, fais cuire le riz.', s: 660 },
+      { t: 'Sers le poulet et les carottes sur le riz, avec le jus de la plaque.' },
+    ],
+    tip: 'Le haut de cuisse coûte bien moins cher que le filet et reste moelleux.',
+  },
   {
     id: 'salade-lentilles', name: 'Salade de lentilles, œufs et thon', cat: 'diner', style: 'leger',
     time: 30, serves: 2, equip: ['plaques'], freeze: false, gamelle: true, tags: ['poisson', 'froid'],

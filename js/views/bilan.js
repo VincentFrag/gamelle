@@ -4,6 +4,7 @@ import * as calc from '../calc.js';
 import * as plan from '../plan.js';
 import { esc, icon, toast } from '../ui.js';
 import { priceTag, gauge } from './common.js';
+import { weightSheet } from './today.js';
 import { barChart, weightChart } from '../charts.js';
 
 const view$ = { mode: 'semaine', offset: 0 };
@@ -35,7 +36,7 @@ export function renderBilan(view, ctx) {
   const series = calc.weightSeries();
   const last = series[series.length - 1];
   const trend = calc.weightTrend(series);
-  const recent = series.filter((x) => x.t >= Date.now() - 60 * calc.DAY_MS);
+  const recent = series.filter((x) => x.t >= Date.now() - 90 * calc.DAY_MS);
   const today = calc.localDay();
   const todayW = store.weights().find((w) => w.day === today);
 
@@ -80,22 +81,23 @@ export function renderBilan(view, ctx) {
       ${filled.length ? `
         ${tg.ready ? gauge(avgKcal, tg.kcal, 'Calories par jour, en moyenne') + gauge(avgP, tg.p, 'Protéines par jour (g), en moyenne', 'prot') : `<p class="block-sub">Moyenne : ${calc.fmt0(avgKcal)} kcal et ${calc.fmt0(avgP)} g de protéines par jour. <a href="#/profil">Renseigne ton profil</a> pour comparer à un objectif.</p>`}
         <div class="chart-box" data-chart="kcal"></div>
+        ${st.shakes ? `<p class="fine">Dont ${st.shakes} shaker${st.shakes > 1 ? 's' : ''} de whey sur la période.</p>` : ''}
         ${st.partial ? '<p class="fine">Les commandes et repas libres comptent pour leurs calories estimées, sans détail des protéines.</p>' : ''}`
         : '<p class="empty">Pas encore de repas sur cette période.</p>'}
     </section>
 
-    <section class="block">
-      <h2 class="block-title">Poids</h2>
-      <form class="bw-form" data-weight>
-        <label class="field"><span>Pesée du jour (kg)</span><input name="w" inputmode="decimal" autocomplete="off" value="${esc(calc.numInput(todayW?.weight ?? null))}" placeholder="${last ? esc(calc.numInput(Math.round(last.weight * 10) / 10)) : 'Ex. : 77,5'}"></label>
-        <button class="btn primary" type="submit">${todayW ? 'Mettre à jour' : 'Enregistrer'}</button>
-      </form>
+    <section class="block" id="poids">
+      <div class="block-head"><h2 class="block-title">Poids</h2><button class="btn small primary" data-weigh>${icon('add')} ${todayW ? 'Modifier la pesée du jour' : 'Pesée du jour'}</button></div>
       ${last ? `<div class="figures compact">
-        <div class="figure"><span class="fig-value">${esc(calc.fmt1(last.avg))}<small>kg</small></span><span class="fig-label">moyenne 7 jours</span></div>
-        <div class="figure"><span class="fig-value">${trend == null ? '–' : esc(calc.fmtSigned(trend, 2))}<small>kg</small></span><span class="fig-label">par semaine (tendance 4 semaines)</span></div>
+        <div class="figure"><span class="fig-value">${esc(calc.fmt1(last.avg))}<small>kg</small></span><span class="fig-label">moyenne sur 7 jours</span></div>
+        <div class="figure"><span class="fig-value">${trend == null ? '–' : esc(calc.fmtSigned(trend, 2))}<small>kg</small></span><span class="fig-label">${trend == null ? 'par semaine (dès 4 pesées sur 4 semaines)' : 'par semaine, tendance sur 4 semaines'}</span></div>
       </div>
-      <div class="chart-box" data-chart="weight"></div>` : ''}
-      <p class="fine">Ton poids se saisit ici, à la main. Une perte d’environ 0,5 % du poids par semaine est un rythme durable.</p>
+      ${recent.length > 1 ? '<div class="chart-box" data-chart="weight"></div><p class="chart-legend"><span class="lg-dot"></span> pesées <span class="lg-line"></span> moyenne sur 7 jours</p>' : ''}
+      <h3 class="group-title">Tes pesées</h3>
+      <div class="list weigh-list">${series.slice(-14).reverse().map((x) => `<button class="list-row" data-weigh-day="${x.day}"><span class="list-main">${esc(calc.relDay(x.day) === calc.fmtDayName(x.day) ? calc.fmtLong(x.day) : `${calc.relDay(x.day)}, ${calc.fmtShort(x.day)}`)}</span><span class="weigh-val"><b>${esc(calc.fmt1(x.weight))}</b> kg</span>${icon('chevron', 'row-chevron')}</button>`).join('')}</div>
+      ${series.length > 14 ? `<p class="fine">${series.length} pesées au total, les 14 dernières sont affichées.</p>` : ''}`
+      : '<p class="empty">Aucune pesée pour l’instant. Note ton poids ici ou depuis la carte « Aujourd’hui » de l’écran Semaine.</p>'}
+      <p class="fine">Une pesée par jour, idéalement le matin à jeun. Le poids varie d’un jour à l’autre (eau, sel, repas) : regarde surtout la moyenne sur 7 jours. Une perte d’environ 0,5 % du poids par semaine est un rythme durable.</p>
     </section>`;
 
   const kcalBox = view.querySelector('[data-chart="kcal"]');
@@ -114,7 +116,7 @@ export function renderBilan(view, ctx) {
   const wBox = view.querySelector('[data-chart="weight"]');
   if (wBox) weightChart(wBox, recent.map((x) => ({ t: x.t, y: x.weight, avg: x.avg })));
 
-  view.addEventListener('click', (e) => {
+  view.addEventListener('click', async (e) => {
     const m = e.target.closest('[data-mode]');
     if (m) {
       view$.mode = m.dataset.mode;
@@ -126,16 +128,11 @@ export function renderBilan(view, ctx) {
       view$.offset = Math.min(0, view$.offset + Number(sh.dataset.shift));
       ctx.render();
     }
-  });
-  view.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const w = calc.parseNum(e.target.w.value);
-    if (!w || w < 25 || w > 400) {
-      toast('Indique un poids en kg, par exemple 77,5.', { kind: 'error' });
+    const wd = e.target.closest('[data-weigh-day]');
+    if (wd) {
+      if (await weightSheet(wd.dataset.weighDay)) ctx.render();
       return;
     }
-    store.saveWeight(today, w);
-    toast('Pesée enregistrée.');
-    ctx.render();
+    if (e.target.closest('[data-weigh]') && await weightSheet()) ctx.render();
   });
 }

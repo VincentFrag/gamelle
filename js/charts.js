@@ -59,7 +59,7 @@ export function weightChart(el, points, { height = 170 } = {}) {
   let svg = `<svg class="chart" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="Évolution du poids">`;
   for (const v of [lo, (lo + hi) / 2, hi]) {
     svg += `<line class="grid" x1="${pad.l}" x2="${width - pad.r}" y1="${y(v)}" y2="${y(v)}"/>`;
-    svg += `<text class="tick" x="${pad.l - 6}" y="${y(v) + 4}" text-anchor="end">${Math.round(v * 10) / 10}</text>`;
+    svg += `<text class="tick" x="${pad.l - 6}" y="${y(v) + 4}" text-anchor="end">${String(Math.round(v * 10) / 10).replace('.', ',')}</text>`;
   }
   svg += `<text class="tick" x="${pad.l}" y="${height - 6}">${esc(df.format(new Date(t0)))}</text>`;
   svg += `<text class="tick" x="${width - pad.r}" y="${height - 6}" text-anchor="end">${esc(df.format(new Date(t1)))}</text>`;

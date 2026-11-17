@@ -42,4 +42,10 @@ Distribuée sous la SIL Open Font License 1.1, dont le texte complet se trouve d
 
 Fichier : `js/data/ingredients.js` (valeurs extraites pour une centaine d'ingrédients).
 
-Source : « Anses. 2020. Table de composition nutritionnelle des aliments Ciqual », <https://ciqual.anses.fr>. L'Anses met ces données à disposition du public, à condition d'indiquer clairement la source. Les valeurs du skyr, de la whey et du lait de coco allégé ne figurent pas dans cette table : ce sont des moyennes d'étiquettes, signalées comme telles.
+Source : « Anses. 2020. Table de composition nutritionnelle des aliments Ciqual », <https://ciqual.anses.fr>. L'Anses met ces données à disposition du public, à condition d'indiquer clairement la source. Les valeurs du skyr, de la whey, du lait de coco allégé, du cottage cheese et du fromage frais type Philadelphia ne figurent pas dans cette table : ce sont des moyennes d'étiquettes, signalées comme telles.
+
+## Open Food Facts
+
+Service : <https://world.openfoodfacts.org> et <https://search.openfoodfacts.org>
+
+Quand tu ajoutes un aliment par son nom ou son code-barres, Gamelle interroge Open Food Facts depuis ton navigateur et recopie le nom et les valeurs nutritionnelles du produit choisi. Seul le texte cherché (ou le code-barres) est envoyé. Les données d'Open Food Facts sont publiées sous la licence Open Database License (ODbL) : <https://opendatacommons.org/licenses/odbl/1-0/>. La source (« Open Food Facts » et le code-barres) est enregistrée avec chaque aliment ajouté ainsi.

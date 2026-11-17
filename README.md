@@ -10,9 +10,13 @@ Application web installable (PWA) pour téléphone, tablette et ordinateur, peti
 - connaître le **prix** de chaque repas, de la journée, de la semaine et du mois, et l'**argent économisé** par rapport aux commandes en livraison ;
 - obtenir la **liste de courses**, groupée par rayon et arrondie aux conditionnements du commerce, en retirant ce qu'on a déjà en **réserve**, avec les **fonds de placard** à racheter chaque semaine ou chaque mois ;
 - suivre les **recettes** pas à pas en **mode cuisine** (écran allumé, minuteurs) ;
-- noter son **poids** à la main, avec une courbe de tendance. Les pesées de Gamelle restent dans Gamelle : rien n'est partagé avec Fonte.
+- ne pas oublier sa **créatine** et son **shaker de whey** : la carte « Aujourd'hui » reste en couleur tant qu'ils ne sont pas cochés, avec la série en cours et les 7 derniers jours. Le shaker compte dans les calories et protéines du jour ;
+- passer en **petit budget** pour une fin de mois difficile (à la main, ou automatiquement les 10 derniers jours du mois) : des plats équilibrés autour de 1,50 à 2 € la portion, en partant de ce qu'on a ;
+- recevoir un petit **coup de pouce** quand on a la flemme de cuisiner, avec les options les plus rapides ;
+- **ajouter un aliment** en le cherchant sur **Open Food Facts** (par nom ou code-barres) : calories et macros se remplissent seules ;
+- noter son **poids** (une pesée par jour, avec la liste des pesées, la moyenne sur 7 jours et la tendance). Les pesées de Gamelle restent dans Gamelle : rien n'est partagé avec Fonte.
 
-L'app contient une trentaine de plats (dont des versions maison de plats qu'on commande : burger, tikka masala, poke bowl, pizza…), 6 sauces légères, 11 desserts simples, 6 gâteaux et desserts de la semaine, des petits-déjeuners et des collations. On peut ajouter ses propres recettes et ingrédients.
+L'app contient plus de trente plats (dont 5 plats petit budget et des versions maison de plats qu'on commande : burger, tikka masala, poke bowl, pizza…), 6 sauces légères, 11 desserts simples, 6 gâteaux et desserts de la semaine, des petits-déjeuners, des collations et plus de 130 aliments. On peut ajouter ses propres recettes et aliments.
 
 ---
 

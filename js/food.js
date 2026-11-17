@@ -121,7 +121,7 @@ function build() {
         id: row.id, custom: true, name: d.name || 'Ingrédient', rayon: d.rayon || 'autre', unit: d.unit || 'g',
         kcal: d.kcal || 0, p: d.p || 0, c: d.c || 0, f: d.f || 0, fib: d.fib || 0,
         pw: d.pw || (d.unit === 'pc' ? 100 : undefined), price: d.price || 0, buy: d.buy, buyLabel: d.buyLabel || '',
-        staple: d.staple || false, src: 'ajouté par toi',
+        staple: d.staple || false, src: d.src || 'ajouté par toi',
       });
     }
   }

@@ -3,6 +3,7 @@
 import * as store from './store.js';
 import * as calc from './calc.js';
 import * as food from './food.js';
+import * as habits from './habits.js';
 
 export const SLOT_ORDER = ['petitdej', 'midi', 'collation', 'soir'];
 export const SLOT_LABELS = { petitdej: 'Petit-déj', midi: 'Midi', collation: 'Collation', soir: 'Soir' };
@@ -97,9 +98,23 @@ export function sumStats(list) {
   return out;
 }
 
+// Shakers de whey notés dans le journal du jour : comptés dans les calories et protéines.
+function shakeTotals(from, to, s) {
+  const one = habits.shakeStats(s);
+  let n = 0;
+  for (const r of store.all('weight')) if (r.id >= from && r.id <= to) n += r.data.shakes || 0;
+  return { n, kcal: one.kcal * n, p: one.p * n, c: one.c * n, f: one.f * n, cost: one.cost * n };
+}
+
+function addShakes(st, sh) {
+  st.kcal += sh.kcal; st.p += sh.p; st.c += sh.c; st.f += sh.f; st.cost += sh.cost;
+  st.shakes = sh.n;
+  return st;
+}
+
 export function dayStats(day) {
   const s = calc.settings();
-  return sumStats(mealsOfDay(day).map((m) => mealStats(m, s)));
+  return addShakes(sumStats(mealsOfDay(day).map((m) => mealStats(m, s))), shakeTotals(day, day, s));
 }
 
 // Ingrédients à préparer pour un repas cuisiné : [id, quantité, pour quoi]
@@ -240,6 +255,7 @@ export function suggestDessert(day, slot) {
   const current = getMeal(day, slot)?.dessert;
   // La whey reste occasionnelle : un tirage par proposition, plus souvent quand il manque des protéines.
   const wantWhey = Math.random() < (protGap > 20 ? 0.4 : 0.15);
+  const budget = serreOn(day, s);
   let best = null;
   for (const r of pool) {
     const st = food.recipeStats(r);
@@ -248,6 +264,7 @@ export function suggestDessert(day, slot) {
     if (whey) score += wantWhey ? 4 : -2;
     if (st.kcal > kcalLeft + 100) score -= 3;
     if (r.style === 'plaisir') score -= 0.5;
+    if (budget) score -= st.cost * 4;
     if (recent.has(r.id)) score -= 3;
     if (r.id === current) score -= 10;
     if (!best || score > best[0]) best = [score, r];
@@ -319,6 +336,30 @@ export function source(m) {
   return getMeal(day, slot);
 }
 
+// ---------- Petit budget (fin de mois) ----------
+// Actif à la main, ou automatiquement les 10 derniers jours du mois si l'option est cochée.
+export function serreAuto(day = calc.localDay()) {
+  const d = calc.dayToDate(day);
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  return d.getDate() > last - 10;
+}
+
+export function serreOn(day = calc.localDay(), s = calc.settings()) {
+  return s.serre || (s.serreAuto && serreAuto(day));
+}
+
+// Plat équilibré : assez de protéines, des calories raisonnables, pas une « version maison ».
+export function balanced(r) {
+  const st = food.recipeStats(r);
+  return Boolean(st && r.style !== 'plaisir' && st.p >= 25 && st.kcal >= 400 && st.kcal <= 850);
+}
+
+// Disponible à la maison (réserves ou produit de placard)
+function inStock(id) {
+  const ing = food.ingredient(id);
+  return Boolean(ing && (ing.staple || store.get('stock', id)));
+}
+
 // ---------- Générateur ----------
 const PROTEIN_TAGS = ['volaille', 'boeuf', 'poisson', 'vege'];
 const mainProtein = (r) => (r.tags || []).find((t) => PROTEIN_TAGS.includes(t)) || 'autre';
@@ -344,16 +385,22 @@ function perishables(r) {
   return out;
 }
 
-function candidates(pool, { style, maxTime, needGamelle, used, lastWeek, chosen, prevProtein, noPlaisir = false }) {
+function candidates(pool, { style, maxTime, needGamelle, used, lastWeek, chosen, prevProtein, noPlaisir = false, budget = false }) {
   const fresh = new Set(chosen.flatMap(perishables));
   const scored = [];
   for (const r of pool) {
     if (used.has(r.id)) continue;
     if (noPlaisir && r.style === 'plaisir') continue;
+    if (budget && !balanced(r)) continue;
     if (maxTime && r.time > maxTime) continue;
     if (needGamelle && r.gamelle === false) continue;
     let score = Math.random() * 2;
-    if (style && r.style === style) score += 4;
+    if (budget) {
+      // Le prix passe devant tout le reste ; ce qu'on a déjà à la maison ne coûte rien de plus.
+      const missing = (r.ing || []).filter(([id]) => !inStock(id));
+      const extra = food.sumOf(missing.map(([id, q]) => [id, q / (r.serves || 1)])).cost;
+      score -= extra * 4;
+    } else if (style && r.style === style) score += 4;
     if (!lastWeek.has(r.id)) score += 2;
     if (prevProtein && mainProtein(r) === prevProtein) score -= 2.5;
     score += perishables(r).filter((id) => fresh.has(id)).length * 0.8;
@@ -379,11 +426,12 @@ export function suggest(day, slot, { exclude = [] } = {}) {
   const workTomorrow = slot === 'soir' ? [6, 0, 1, 2, 3].includes(wd) : [0, 1, 2, 3, 4].includes(wd);
   let maisons = 0;
   for (const d of week) for (const m of mealsOfDay(d)) if (m.kind === 'recette' && !(d === day && m.slot === slot) && food.isMaison(food.recipe(m.recipe))) maisons++;
+  const budget = serreOn(day, s);
   const opts = {
     maxTime: workTomorrow || slot === 'midi' ? s.weekdayTime : 75,
     needGamelle: slot === 'soir' && s.batch && workTomorrow,
     used, lastWeek: new Set(), chosen: [], prevProtein: null,
-    noPlaisir: maisons >= s.plaisir,
+    noPlaisir: budget || maisons >= s.plaisir, budget,
   };
   return candidates(pool, opts)[0] || candidates(pool, { ...opts, maxTime: null, needGamelle: false, used: new Set(exclude) })[0] || null;
 }
@@ -440,11 +488,12 @@ export function generate(start, mode = 'fill') {
     }
     const wd = calc.weekday(d);
     const workTomorrow = [6, 0, 1, 2, 3].includes(wd);
-    const style = styleOf.get(d) || 'equilibre';
-    const base = { style, used, lastWeek, chosen, prevProtein, noPlaisir: style !== 'plaisir' || maisons >= maisonQuota };
+    const budget = serreOn(d, s);
+    const style = budget ? 'equilibre' : styleOf.get(d) || 'equilibre';
+    const base = { style, used, lastWeek, chosen, prevProtein, budget, noPlaisir: budget || style !== 'plaisir' || maisons >= maisonQuota };
     const strict = { ...base, maxTime: workTomorrow ? s.weekdayTime : 75, needGamelle: s.batch && workTomorrow };
     const r = candidates(dinners, strict)[0] || candidates(dinners, { ...base, maxTime: null, needGamelle: false })[0]
-      || candidates(dinners, { ...base, used: new Set() })[0];
+      || candidates(dinners, { ...base, used: new Set() })[0] || candidates(dinners, { ...base, used: new Set(), budget: false })[0];
     if (!r) continue;
     if (food.isMaison(r)) maisons++;
     used.add(r.id);
@@ -467,7 +516,7 @@ export function generate(start, mode = 'fill') {
     const prevId = mealId(prevDay, 'soir');
     const prev = next.get(prevId) || (prevDay < start ? getMeal(prevDay, 'soir') : null);
     if (prev && isCooked(prev) && (prev.cooked ?? 1) - (prev.portions ?? 1) >= 0.5) continue;
-    const quick = candidates(dinners, { used, lastWeek, chosen, maxTime: 30, needGamelle: true, style: null, prevProtein: null, noPlaisir: true });
+    const quick = candidates(dinners, { used, lastWeek, chosen, maxTime: 30, needGamelle: true, style: null, prevProtein: null, noPlaisir: true, budget: serreOn(d, s) });
     const r = quick.find((x) => (x.tags || []).includes('froid')) || quick[0];
     if (!r) continue;
     used.add(r.id);
@@ -530,7 +579,7 @@ export function periodStats(from, to) {
   const s = calc.settings();
   const meals = mealsBetween(from, to);
   const days = new Set(meals.map((m) => m.day));
-  const st = sumStats(meals.map((m) => mealStats(m, s)));
+  const st = addShakes(sumStats(meals.map((m) => mealStats(m, s))), shakeTotals(from, to, s));
   const home = meals.filter((m) => (isCooked(m) || m.kind === 'reste') && (m.slot === 'midi' || m.slot === 'soir'));
   const homeCost = home.reduce((n, m) => n + mealStats(m, s).cost, 0);
   return {

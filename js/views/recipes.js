@@ -8,6 +8,7 @@ import { EQUIP, STYLES, RAYONS, UNITS } from '../clean.js';
 
 const FILTERS = [
   ['plats', 'Plats'],
+  ['budget', 'Petit budget'],
   ['equilibre', 'Équilibrés'],
   ['leger', 'Légers'],
   ['plaisir', 'Versions maison'],
@@ -28,6 +29,7 @@ const state = { filter: 'plats', q: '' };
 function matches(r, f) {
   switch (f) {
     case 'plats': return r.cat === 'diner';
+    case 'budget': return r.cat === 'diner' && r.style !== 'plaisir' && (food.recipeStats(r).cost <= 2.3 || (r.tags || []).includes('budget'));
     case 'equilibre': case 'leger': case 'plaisir': return r.cat === 'diner' && r.style === f;
     case 'petitdej': case 'collation': case 'sauce': return r.cat === f;
     case 'dessert': return r.cat === 'dessert' && !food.isLot(r);
@@ -47,6 +49,7 @@ export function renderRecipes(view, ctx) {
     <label class="search page-search"><span class="sr-only">Rechercher</span>${icon('search')}<input type="search" placeholder="Recette ou ingrédient" value="${esc(state.q)}" data-q autocomplete="off"></label>
     <div class="chips scroll" role="group" aria-label="Filtres">
       ${FILTERS.map(([k, l]) => `<button class="chip ${state.filter === k ? 'is-on' : ''}" data-f="${k}">${esc(l)}</button>`).join('')}
+      <a class="chip chip-link" href="#/aliments">${icon('add')} Aliments</a>
     </div>
     <div data-list></div>`;
 
@@ -55,8 +58,9 @@ export function renderRecipes(view, ctx) {
     const list = food.recipes()
       .filter((r) => matches(r, state.filter))
       .filter((r) => !nq || food.norm(r.name).includes(nq) || r.ing.some(([id]) => food.norm(food.ingredient(id)?.name).includes(nq)))
-      .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-    const hint = { plaisir: 'Tes commandes habituelles, faites maison. Gamelle en glisse au plus une par semaine dans ses propositions (réglable).', sauce: 'Pour relever un plat simple : pâtes ou riz, une protéine, un légume. Le bouton « Ajouter au planning » compose l’assiette.', lot: 'Préparés une fois, mangés en parts dans la semaine. Prix et valeurs par part.', dessert: 'À ajouter à un repas en deux gestes, depuis l’écran Semaine.' }[state.filter];
+      .sort((a, b) => (state.filter === 'budget' ? food.recipeStats(a).cost - food.recipeStats(b).cost : 0) || a.name.localeCompare(b.name, 'fr'));
+    const hint = {
+      budget: 'Plats équilibrés autour de 1,50 à 2 € la portion, du moins cher au plus cher. Pour une fin de mois difficile, active aussi « Petit budget » (bouton des propositions de la Semaine) : Gamelle les choisira pour toi.', plaisir: 'Tes commandes habituelles, faites maison. Gamelle en glisse au plus une par semaine dans ses propositions (réglable).', sauce: 'Pour relever un plat simple : pâtes ou riz, une protéine, un légume. Le bouton « Ajouter au planning » compose l’assiette.', lot: 'Préparés une fois, mangés en parts dans la semaine. Prix et valeurs par part.', dessert: 'À ajouter à un repas en deux gestes, depuis l’écran Semaine.' }[state.filter];
     view.querySelector('[data-list]').innerHTML = list.length
       ? `${hint ? `<p class="block-sub">${esc(hint)}</p>` : ''}<p class="list-count">${list.length} recette${list.length > 1 ? 's' : ''}, prix et valeurs ${state.filter === 'lot' ? 'par part' : 'par portion'}</p><div class="list">${list.map((r) => recipeRow(r)).join('')}</div>`
       : `<p class="empty">${state.filter === 'perso' && !nq ? 'Tu n’as pas encore créé de recette. Le bouton + en haut permet d’en ajouter une, ou de partir d’une recette existante avec « Dupliquer ».' : 'Aucune recette ne correspond.'}</p>`;
@@ -192,77 +196,9 @@ function parseSteps(text) {
   });
 }
 
-export async function pickIngredient() {
-  let q = '';
-  return openSheet({
-    title: 'Ingrédient',
-    wide: true,
-    body: `<label class="search"><span class="sr-only">Rechercher</span><input type="search" placeholder="Rechercher" data-q autocomplete="off" autofocus></label>
-      <div class="list" data-results></div>
-      <button type="button" class="btn ghost block" data-new>${icon('add')} Créer un ingrédient</button>`,
-    onMount(el, api) {
-      const draw = () => {
-        const nq = food.norm(q);
-        const list = food.ingredients().filter((i) => !nq || food.norm(i.name).includes(nq)).sort((a, b) => (nq ? food.norm(b.name).startsWith(nq) - food.norm(a.name).startsWith(nq) : 0) || a.name.localeCompare(b.name, 'fr')).slice(0, 60);
-        el.querySelector('[data-results]').innerHTML = list.map((i) => `<button type="button" class="list-row" data-pick="${esc(i.id)}"><span class="list-main">${esc(i.name)}<small>${esc(food.RAYON_LABELS[i.rayon] || '')}, en ${esc(food.UNIT_LABELS[i.unit])}</small></span></button>`).join('') || '<p class="empty pad">Aucun ingrédient trouvé.</p>';
-      };
-      el.querySelector('[data-q]').addEventListener('input', (e) => { q = e.target.value; draw(); });
-      el.addEventListener('click', async (e) => {
-        const p = e.target.closest('[data-pick]');
-        if (p) return api.close(p.dataset.pick);
-        if (e.target.closest('[data-new]')) {
-          const id = await editIngredient(null, q);
-          if (id) api.close(id);
-        }
-      });
-      draw();
-    },
-  });
-}
-
-export async function editIngredient(id, name = '') {
-  const cur = id ? food.ingredient(id) : null;
-  const v = (k) => esc(calc.numInput(cur?.[k]));
-  const res = await openSheet({
-    title: cur ? 'Modifier l’ingrédient' : 'Nouvel ingrédient',
-    wide: true,
-    body: `<form class="form" data-form>
-      <label class="field"><span>Nom</span><input name="name" maxlength="80" value="${esc(cur?.name || name)}" required></label>
-      <div class="field-row">
-        <label class="field"><span>Rayon</span><select name="rayon">${RAYONS.map((r) => `<option value="${r}" ${(cur?.rayon || 'autre') === r ? 'selected' : ''}>${esc(food.RAYON_LABELS[r])}</option>`).join('')}</select></label>
-        <label class="field"><span>Compté en</span><select name="unit">${UNITS.map((u) => `<option value="${u}" ${(cur?.unit || 'g') === u ? 'selected' : ''}>${esc(food.UNIT_LABELS[u])}</option>`).join('')}</select></label>
-      </div>
-      <label class="field"><span>Poids d’une pièce (g), si compté en pièces</span><input name="pw" inputmode="decimal" value="${v('pw')}"></label>
-      <p class="field-help">Valeurs pour 100 g, sur l’étiquette ou sur ciqual.anses.fr.</p>
-      <div class="field-row four">
-        <label class="field"><span>kcal</span><input name="kcal" inputmode="decimal" value="${v('kcal')}"></label>
-        <label class="field"><span>Prot.</span><input name="p" inputmode="decimal" value="${v('p')}"></label>
-        <label class="field"><span>Gluc.</span><input name="c" inputmode="decimal" value="${v('c')}"></label>
-        <label class="field"><span>Lip.</span><input name="f" inputmode="decimal" value="${v('f')}"></label>
-      </div>
-      <label class="field"><span>Prix (€ le kg, le litre ou la pièce)</span><input name="price" inputmode="decimal" value="${v('price')}"></label>
-      <label class="switch"><input type="checkbox" name="staple" ${cur?.staple ? 'checked' : ''}><span>Produit de placard<small>Toujours à la maison : il apparaît « à vérifier » dans la liste de courses.</small></span></label>
-    </form>`,
-    actions: [
-      { label: 'Annuler', value: null },
-      {
-        label: 'Enregistrer', kind: 'primary',
-        handler(el) {
-          const f = formData(el);
-          if (!f.name.trim()) return false;
-          const nid = id || `x-${store.uuid().slice(0, 8)}`;
-          store.put('ingredient', nid, {
-            custom: true, name: f.name.trim(), rayon: f.rayon, unit: f.unit,
-            pw: calc.parseNum(f.pw), kcal: calc.parseNum(f.kcal) || 0, p: calc.parseNum(f.p) || 0,
-            c: calc.parseNum(f.c) || 0, f: calc.parseNum(f.f) || 0, price: calc.parseNum(f.price) || 0, staple: f.staple,
-          });
-          return nid;
-        },
-      },
-    ],
-  });
-  return res;
-}
+// Choix et création d'aliments : voir aliments.js (ajout depuis Open Food Facts).
+export { pickIngredient, editIngredient } from './aliments.js';
+import { pickIngredient } from './aliments.js';
 
 export function renderRecipeEdit(view, ctx, id) {
   const existing = id ? food.recipe(id) : null;

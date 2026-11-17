@@ -4,6 +4,7 @@ import * as food from '../food.js';
 import * as plan from '../plan.js';
 import { esc, icon, menuSheet, confirmSheet, toast } from '../ui.js';
 import { priceTag, mealActions, gauge, pickRecipe, bakeSheet } from './common.js';
+import { todayCard, todayClick } from './today.js';
 
 function mealSub(m) {
   const r = food.recipe(m.recipe);
@@ -129,6 +130,8 @@ export function renderWeek(view, ctx, startParam) {
   const empty = !ws.meals;
   const offers = plan.leftoverOffers(start);
   const bakes = plan.bakesOfWeek(start);
+  const serreFrom = days.find((d) => d >= today && plan.serreOn(d, s));
+  const serre = Boolean(serreFrom);
 
   view.innerHTML = `
     ${ctx.pageHead('Semaine', {
@@ -142,6 +145,8 @@ export function renderWeek(view, ctx, startParam) {
       ${isCurrent ? '' : '<a class="btn small" href="#/semaine">Aujourd’hui</a>'}
     </div>
     ${!tg.ready ? `<a class="banner" href="#/profil">Renseigne ton profil pour calculer ton objectif de calories et de protéines.</a>` : ''}
+    ${isCurrent ? todayCard(today) : ''}
+    ${serre ? `<div class="serre-banner">${icon('wallet')}<span><b>Petit budget</b>${s.serre ? '' : serreFrom <= today ? ' jusqu’à la fin du mois' : ` à partir de ${calc.relDay(serreFrom).toLowerCase()}`} : Gamelle propose des plats équilibrés au plus bas prix, en partant de ce que tu as.</span>${s.serre ? '<button class="btn small" data-serre-off>Arrêter</button>' : ''}</div>` : ''}
     ${isCurrent && !empty ? tonightCard(today, s) : ''}
     ${empty ? `<section class="block soft start-week">
         <p class="start-title">Semaine vide</p>
@@ -190,6 +195,12 @@ export function renderWeek(view, ctx, startParam) {
   };
 
   view.addEventListener('click', async (e) => {
+    if (await todayClick(e, ctx)) return;
+    if (e.target.closest('[data-serre-off]')) {
+      calc.saveSettings({ serre: false });
+      toast('Petit budget arrêté. Les prochaines propositions reprennent leur rythme habituel.');
+      return ctx.render();
+    }
     const keep = e.target.closest('[data-keep]');
     if (keep) {
       plan.keepLeftover(keep.dataset.keep);
@@ -256,10 +267,23 @@ export function renderWeek(view, ctx, startParam) {
       const c = await menuSheet('Proposer des repas', [
         { label: 'Remplir les repas vides', value: 'fill', icon: 'add' },
         { label: 'Tout reproposer', value: 'replace', icon: 'shuffle' },
+        { label: s.serre ? 'Arrêter le petit budget' : 'Petit budget (fin de mois difficile)', value: 'serre', icon: 'wallet' },
         { label: 'Réglages des propositions', value: 'prefs', icon: 'sliders' },
       ]);
       if (c === 'prefs') ctx.go('/preferences');
-      else if (c) generate(c);
+      else if (c === 'serre') {
+        calc.saveSettings({ serre: !s.serre });
+        if (s.serre) {
+          toast('Petit budget arrêté.');
+          return ctx.render();
+        }
+        const ok = await confirmSheet('Petit budget activé', 'Les prochaines propositions privilégient des plats équilibrés au plus bas prix, et ce que tu as déjà à la maison. Reproposer les repas de cette semaine qui ne sont pas encore cuisinés ?', { ok: 'Reproposer' });
+        if (ok) {
+          plan.generate(start, 'replace');
+          toast('Semaine reproposée en petit budget.');
+        }
+        ctx.render();
+      } else if (c) generate(c);
     }
   });
 }

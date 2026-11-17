@@ -48,6 +48,11 @@ const ICONS = {
   cart: '<path d="M4 6h2l2 10h10l2-7H7.2"/>',
   bike: '<circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-7h5l3 7M10 9 8.5 6H7M13 6h2"/>',
   fork: '<path d="M7 3v7a2 2 0 0 0 4 0V3M9 12v9M16 3c-1.7 0-3 2.4-3 5.5S14 13 16 13v8"/>',
+  scoop: '<path d="M3.5 10h11v2.5a5.5 5.5 0 0 1-11 0z"/><path d="M14.5 11.2h6"/>',
+  shaker: '<path d="M7.5 9h9l-1.2 11H8.7z"/><path d="M8 9V6.5h8V9M10 4h4"/>',
+  spark: '<path d="M12 3.5v4M12 16.5v4M3.5 12h4M16.5 12h4M6 6l2.6 2.6M15.4 15.4 18 18M6 18l2.6-2.6M15.4 8.6 18 6"/>',
+  wallet: '<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3"/><rect x="4" y="8" width="16" height="11" rx="2.5"/><circle cx="16" cy="13.5" r="1.2"/>',
+  barcode: '<path d="M4 6v12M7 6v12M10.5 6v12M13 6v12M16.5 6v12M20 6v12"/>',
   up: '<path d="M6 15l6-6 6 6"/>',
   down: '<path d="M6 9l6 6 6-6"/>',
 };
