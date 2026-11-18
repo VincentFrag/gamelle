@@ -76,8 +76,29 @@ function bindViewport() {
     r.setProperty('--vvh', `${Math.round(vv.height)}px`);
     r.setProperty('--vvt', `${Math.round(vv.offsetTop)}px`);
   };
-  vv.addEventListener('resize', set);
+  // Champ touché dans une fenêtre : une fois le clavier ouvert (la fenêtre a rétréci),
+  // on fait défiler la fenêtre pour mettre le champ au milieu de la partie visible.
+  let focused = null;
+  const reveal = () => {
+    if (!focused || !document.contains(focused) || document.activeElement !== focused) return;
+    const body = focused.closest('.sheet-body');
+    if (!body) return;
+    const b = body.getBoundingClientRect();
+    const r = focused.getBoundingClientRect();
+    const visibleBottom = Math.min(b.bottom, vv.offsetTop + vv.height);
+    if (r.top < b.top + 8 || r.bottom > visibleBottom - 8) {
+      body.scrollTop += r.top - b.top - (visibleBottom - b.top) / 2 + r.height / 2;
+    }
+  };
+  vv.addEventListener('resize', () => { set(); requestAnimationFrame(reveal); });
   vv.addEventListener('scroll', set);
+  document.addEventListener('focusin', (e) => {
+    if (!e.target.matches('input, textarea, select') || !e.target.closest('.sheet')) return;
+    focused = e.target;
+    // le clavier met environ 300 ms à monter ; on vérifie après, et encore une fois par sécurité
+    setTimeout(reveal, 320);
+    setTimeout(reveal, 650);
+  });
   set();
 }
 
