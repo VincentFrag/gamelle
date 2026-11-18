@@ -12,8 +12,31 @@ export function creatineTaken(day) {
   return store.dayLog(day).creatine === true;
 }
 
-export function shakes(day) {
+// Shakers cochés à la main dans la carte « Aujourd'hui »
+export function loggedShakes(day) {
   return store.dayLog(day).shakes || 0;
+}
+
+// Whey déjà mise dans un repas du jour (petit-déj ou collation composés) : compte comme un shaker.
+// Sans ça, cocher la case en plus du petit-déj comptait la même whey deux fois.
+export function mealShakes(day, s = calc.settings()) {
+  const g = config(s).wheyG || 30;
+  let q = 0;
+  for (const r of store.all('meal')) {
+    if (!r.id.startsWith(`${day}:`) || r.data.kind !== 'compo') continue;
+    for (const [id, qty] of r.data.parts || []) if (id === 'whey') q += qty * (r.data.portions ?? 1);
+  }
+  return q > 0 ? Math.max(1, Math.round(q / g)) : 0;
+}
+
+// Shakers du jour : le plus grand des deux, jamais la somme (c'est la même whey)
+export function shakes(day) {
+  return Math.max(loggedShakes(day), mealShakes(day));
+}
+
+// Shakers à ajouter aux calories du jour, en plus de ce que les repas comptent déjà
+export function extraShakes(day) {
+  return Math.max(0, loggedShakes(day) - mealShakes(day));
 }
 
 export function setCreatine(day, on) {

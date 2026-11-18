@@ -111,7 +111,7 @@ function shakeTotals(from, to, s) {
   const snacks = [];
   for (const r of store.all('weight')) {
     if (r.id < from || r.id > to) continue;
-    n += r.data.shakes || 0;
+    n += habits.extraShakes(r.id);
     if (r.data.snacks) snacks.push(...r.data.snacks);
   }
   const sn = food.sumOf(snacks);

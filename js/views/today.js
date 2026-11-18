@@ -32,7 +32,8 @@ export function todayCard(today = calc.localDay()) {
   const log = store.dayLog(today);
   const pending = habits.pending(today, s);
   const shake = habits.shakeStats(s);
-  const n = log.shakes || 0;
+  const n = habits.shakes(today);
+  const inMeal = habits.mealShakes(today) > 0;
   const items = [];
   if (h.creatine) {
     const on = log.creatine === true;
@@ -52,7 +53,7 @@ export function todayCard(today = calc.localDay()) {
       <button class="habit-toggle" data-habit="whey" aria-pressed="${on}">
         <span class="habit-check">${icon(on ? 'check' : 'shaker')}</span>
         <span class="habit-main"><span class="habit-name">Shaker de whey</span>
-          <small>${on ? `${n > 1 ? `${n} shakers, ` : 'Bu, '}${calc.fmt0(shake.p * n)} g de protéines comptés` : `À prendre : ${h.wheyG} g, ${calc.fmt0(shake.p)} g de protéines`}</small></span>
+          <small>${on ? `${n > 1 ? `${n} shakers, ` : inMeal ? 'Dans ton petit-déj, ' : 'Bu, '}${calc.fmt0(shake.p * n)} g de protéines comptés` : `À prendre : ${h.wheyG} g, ${calc.fmt0(shake.p)} g de protéines`}</small></span>
       </button>
       ${on ? `<button class="icon-btn small" data-shake-add aria-label="Ajouter un shaker">${icon('add')}</button>` : streakText(habits.wheyStreak(today))}
       <span class="habit-dots" aria-label="7 derniers jours">${dots((d) => habits.shakes(d) > 0, today)}</span>
@@ -95,8 +96,13 @@ export async function todayClick(e, ctx) {
       if (on) toast(n > 1 ? `Créatine prise. ${n} jours d’affilée.` : 'Créatine prise.');
       else toast('Créatine décochée.', { action: 'Annuler', onAction: () => { habits.setCreatine(today, true); ctx.render(); } });
     } else {
+      const inMeal = habits.mealShakes(today);
+      if (inMeal && habits.loggedShakes(today) <= inMeal) {
+        toast('Ta whey est déjà dans ton petit-déj ou ta collation : elle est comptée. Pour la décocher, retire-la du repas.', { duration: 6000 });
+        return true;
+      }
       const on = habits.shakes(today) === 0;
-      habits.setShakes(today, on ? 1 : 0);
+      habits.setShakes(today, on ? Math.max(1, inMeal) : 0);
       if (on) toast(`Shaker noté : ${calc.fmt0(habits.shakeStats().p)} g de protéines ajoutés à ta journée.`);
       else toast('Shaker décoché.', { action: 'Annuler', onAction: () => { habits.setShakes(today, 1); ctx.render(); } });
     }
@@ -105,7 +111,7 @@ export async function todayClick(e, ctx) {
   }
   if (e.target.closest('[data-shake-add]')) {
     habits.setShakes(today, habits.shakes(today) + 1);
-    toast(`${habits.shakes(today)} shakers aujourd’hui.`, { action: 'Annuler', onAction: () => { habits.setShakes(today, habits.shakes(today) - 1); ctx.render(); } });
+    toast(`${habits.shakes(today)} shakers aujourd’hui.`, { action: 'Annuler', onAction: () => { habits.setShakes(today, habits.loggedShakes(today) - 1); ctx.render(); } });
     ctx.render();
     return true;
   }
