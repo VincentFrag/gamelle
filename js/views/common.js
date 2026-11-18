@@ -308,10 +308,12 @@ const MAX_PARTS = 6;
 export function compoSheet({ day = null, slot = null, cur = null, sauce = null } = {}) {
   const s = calc.settings();
   // id → { group, qty } dans l'ordre de choix
+  // Famille d'un aliment : celle où tu l'as rangé toi-même, sinon celle de ses valeurs
+  const groupFor = (id) => favs.groupOf(id, GROUPS) || groupOf(food.ingredient(id));
   const pick = new Map();
   for (const [id, q] of cur?.parts || []) {
     const ing = food.ingredient(id);
-    if (ing) pick.set(id, { group: groupOf(ing), qty: q });
+    if (ing) pick.set(id, { group: groupFor(id), qty: q });
   }
   let sauceId = cur ? cur.sauce || null : sauce;
   // Ma sauce, à l'œil (par portion)
@@ -328,7 +330,12 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
     const base = favs.list(g).map((id) => [id, defaultQty(food.ingredient(id), g)]);
     if (g !== 'extra') for (const [id, q] of food.COMPO[g].items) if (!base.some(([x]) => x === id)) base.push([id, q]);
     for (const [id, p] of pick) if (p.group === g && !base.some(([x]) => x === id)) base.push([id, p.qty]);
-    return base;
+    // chaque aliment n'apparaît que dans une seule famille
+    return base.filter(([id]) => {
+      if (pick.has(id)) return pick.get(id).group === g;
+      const fg = favs.groupOf(id, GROUPS);
+      return !fg || fg === g;
+    });
   };
   const chip = (group, [id, q]) => {
     const ing = food.ingredient(id);
@@ -444,9 +451,12 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
           if (pick.size >= MAX_PARTS) return toast(`${MAX_PARTS} éléments au plus dans une assiette.`, { kind: 'error' });
           const g = o.dataset.other;
           const id = await pickIngredient({ title: GROUP_LABELS[g], group: g });
-          if (id && !pick.has(id)) pick.set(id, { group: g, qty: defaultQty(food.ingredient(id), g) });
-          // reste proposé dans cette famille les fois suivantes
-          if (id) favs.add(g, id);
+          if (id) {
+            // rangé là où tu l'as ajouté, et proposé dans cette famille seulement les fois suivantes
+            if (pick.has(id)) pick.get(id).group = g;
+            else pick.set(id, { group: g, qty: defaultQty(food.ingredient(id), g) });
+            favs.addOnly(g, id, GROUPS);
+          }
           return redraw();
         }
         const sc = e.target.closest('[data-sauce]');

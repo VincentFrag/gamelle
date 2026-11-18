@@ -18,7 +18,8 @@ export function groupOf(ing) {
   if (it) return it.group;
   const k = ing.kcal || 1;
   const pr = (ing.p * 4) / k, cr = (ing.c * 4) / k, fr = (ing.f * 9) / k;
-  if (ing.p >= 8 && pr >= 0.3 && !ing.staple) return 'proteine';
+  // fromages riches en protéines (halloumi, emmental…) comptés comme protéine
+  if (!ing.staple && ((ing.p >= 8 && pr >= 0.3) || (ing.p >= 15 && pr >= 0.25))) return 'proteine';
   if (!FRUITS.has(ing.id) && ['legumes', 'surgeles'].includes(ing.rayon) && k < 60) return 'legume';
   if (cr >= 0.6 && fr < 0.3 && k >= 70 && !ing.staple && !FRUITS.has(ing.id) && ing.c >= 12) return 'feculent';
   return 'extra';
