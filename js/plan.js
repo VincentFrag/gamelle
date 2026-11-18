@@ -48,8 +48,11 @@ function baseStats(m, s) {
     if (!st) return { kcal: 0, p: 0, c: 0, f: 0, cost: 0, home: true };
     return scaled(st, portions);
   }
-  if (m.kind === 'uber') return { kcal: m.kcal ?? s.uber.kcal, p: null, c: null, f: null, cost: m.cost ?? s.uber.avg, home: false };
-  return { kcal: m.kcal ?? s.libreKcal, p: null, c: null, f: null, cost: m.cost ?? 0, home: false };
+  // Macros saisies à la main : si au moins une est donnée, les autres comptent pour 0.
+  const hasM = m.p != null || m.c != null || m.f != null;
+  const mac = hasM ? { p: m.p ?? 0, c: m.c ?? 0, f: m.f ?? 0 } : { p: null, c: null, f: null };
+  if (m.kind === 'uber') return { kcal: m.kcal ?? s.uber.kcal, ...mac, cost: m.cost ?? s.uber.avg, home: false };
+  return { kcal: m.kcal ?? s.libreKcal, ...mac, cost: m.cost ?? 0, home: false };
 }
 
 // Dessert d'un repas : simple (yaourt, fruit…) ou une part du dessert de la semaine.

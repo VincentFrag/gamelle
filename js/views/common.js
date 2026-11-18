@@ -224,12 +224,37 @@ export function outsideSheet(day, slot, kind, cur) {
         <button type="button" class="chip" data-kcal="900">Normal, 900</button>
         <button type="button" class="chip" data-kcal="1300">Copieux, 1 300</button>
       </div>
+      <p class="group-title">Macros (facultatif, en grammes)</p>
+      <div class="field-row three">
+        <label class="field"><span>Protéines</span><input name="p" inputmode="decimal" value="${esc(calc.numInput(cur?.p ?? null))}"></label>
+        <label class="field"><span>Glucides</span><input name="c" inputmode="decimal" value="${esc(calc.numInput(cur?.c ?? null))}"></label>
+        <label class="field"><span>Lipides</span><input name="f" inputmode="decimal" value="${esc(calc.numInput(cur?.f ?? null))}"></label>
+      </div>
+      <p class="field-help" data-macro-check>Si tu les as estimées, elles comptent dans tes protéines du jour. Sinon, seules les calories comptent.</p>
     </form>`,
     onMount(el) {
+      // Repère : ce que font les macros saisies, en calories (4 kcal par g de protéines ou glucides, 9 par g de lipides)
+      const check = () => {
+        const g = (k) => calc.parseNum(el.querySelector(`[name=${k}]`).value) || 0;
+        const p = g('p'), c = g('c'), f = g('f');
+        const box = el.querySelector('[data-macro-check]');
+        if (!p && !c && !f) {
+          box.textContent = 'Si tu les as estimées, elles comptent dans tes protéines du jour. Sinon, seules les calories comptent.';
+          return;
+        }
+        const k = Math.round(p * 4 + c * 4 + f * 9);
+        const kc = calc.parseNum(el.querySelector('[name=kcal]').value);
+        box.textContent = `Tes macros font environ ${calc.fmt0(k)} kcal${kc ? (Math.abs(k - kc) > Math.max(150, kc * 0.2) ? ` : assez loin des ${calc.fmt0(kc)} kcal notées, l’un des deux est peut-être à revoir.` : ', cohérent avec tes calories.') : '. Laisse les calories vides pour utiliser ce chiffre.'}`;
+      };
+      el.addEventListener('input', check);
       el.addEventListener('click', (e) => {
         const b = e.target.closest('[data-kcal]');
-        if (b) el.querySelector('[name=kcal]').value = b.dataset.kcal;
+        if (b) {
+          el.querySelector('[name=kcal]').value = b.dataset.kcal;
+          check();
+        }
       });
+      check();
     },
     actions: [
       { label: 'Annuler', value: null },
@@ -237,11 +262,16 @@ export function outsideSheet(day, slot, kind, cur) {
         label: 'Enregistrer', kind: 'primary',
         handler(el) {
           const f = formData(el);
+          const p = calc.parseNum(f.p), c = calc.parseNum(f.c), fat = calc.parseNum(f.f);
+          let kcal = calc.parseNum(f.kcal);
+          // calories vides mais macros données : on les déduit des macros
+          if (kcal == null && (p || c || fat)) kcal = Math.round((p || 0) * 4 + (c || 0) * 4 + (fat || 0) * 9);
           plan.setMeal(day, slot, {
             kind,
             label: f.label.trim(),
             cost: calc.parseNum(f.cost),
-            kcal: calc.parseNum(f.kcal),
+            kcal,
+            p, c, f: fat,
           });
           return true;
         },

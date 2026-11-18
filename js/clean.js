@@ -60,6 +60,10 @@ function meal(d, rowId) {
     from: id(d.from),
     cost: num(d.cost, 0, 1000),
     kcal: num(d.kcal, 0, 10000, { int: true }),
+    // macros estimées à la main (restaurant, commande, repas libre)
+    p: num(d.p, 0, 1000),
+    c: num(d.c, 0, 1000),
+    f: num(d.f, 0, 1000),
     label: str(d.label, 80),
     note: str(d.note, 300),
     done: bool(d.done) || null,
