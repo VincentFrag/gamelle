@@ -56,9 +56,14 @@ function mealRow(day, slot, s) {
   const ico = m.kind === 'reste' ? icon('box', 'meal-ico') : m.kind === 'uber' ? icon('bike', 'meal-ico') : m.done ? icon('check', 'meal-ico') : m.kind === 'compo' ? icon('fork', 'meal-ico') : '';
   const main = slot === 'midi' || slot === 'soir';
   const cakeOnly = m.kind === 'compo' && m.cake && !m.parts?.length && !m.sauce && !m.sauceParts;
+  // Le dessert a sa propre ligne : la ligne du repas affiche le plat seul (le total du jour, lui, compte tout une fois)
+  if (main && d && !cakeOnly) {
+    st.kcal -= d.kcal;
+    st.cost -= d.cost;
+  }
   // Le dessert a sa propre ligne sous le midi et le soir : « + Dessert », ou le dessert choisi
   const dessertLine = !main || cakeOnly ? '' : d
-    ? `<button class="meal-dessert-row has-dessert" data-dessert-day="${day}" data-dessert-slot="${slot}" style="--slot: var(--sl-${slot})"><span class="dr-label">Dessert</span><span class="dr-name">${esc(d.name)}</span><span class="dr-kcal">${calc.fmt0(d.kcal)} kcal</span></button>`
+    ? `<button class="meal-dessert-row has-dessert" data-dessert-day="${day}" data-dessert-slot="${slot}" style="--slot: var(--sl-${slot})"><span class="dr-label">Dessert</span><span class="dr-name">${esc(d.name)}</span><span class="dr-kcal">${calc.fmt0(d.kcal)} kcal${d.cost >= 0.01 ? `, ${esc(calc.fmtEur(d.cost))}` : ''}</span></button>`
     : `<button class="meal-dessert-row" data-dessert-day="${day}" data-dessert-slot="${slot}" style="--slot: var(--sl-${slot})"><span class="dr-label"></span><span class="dr-name">${icon('add')} Dessert</span></button>`;
   return `<button class="meal k-${m.kind}${m.done ? ' is-done' : ''}" data-slot="${slot}" data-day="${day}">
     <span class="meal-slot">${esc(plan.SLOT_LABELS[slot])}</span>

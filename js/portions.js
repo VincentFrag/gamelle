@@ -7,6 +7,16 @@ const M = (one, many, q, step = 1) => ({ one, many, q, step });
 const CAF = (q) => M('c. à café', 'c. à café', q, 0.5);
 const CAS = (q) => M('c. à soupe', 'c. à soupe', q, 0.5);
 
+// Féculents secs : la valeur est celle de l'aliment cru. Rendement à la cuisson (cuit / cru).
+// Repéré au nom et à la densité (un riz « cuit » en sachet fait ~130 kcal pour 100 g, le sec ~350).
+const SWELL = [[/riz|quinoa|boulgour|lentille|pois chiche|haricot sec|sarrasin|orge|epeautre|millet/, 2.6], [/pate|spaghetti|tagliatelle|penne|coquillette|macaroni|fusilli|semoule|couscous|vermicelle|nouille/, 2.2]];
+export function swell(ing) {
+  if (!ing || ing.unit !== 'g' || (ing.kcal || 0) < 300) return null;
+  const n = food.norm(ing.name);
+  const hit = SWELL.find(([re]) => re.test(n));
+  return hit ? hit[1] : null;
+}
+
 // Desserts : ce qu'on prend sans recette
 export const DESSERT = {
   chocolat_noir: M('carré', 'carrés', 5),

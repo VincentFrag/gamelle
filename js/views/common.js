@@ -380,9 +380,11 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
       };
       const qtyList = () => {
         const p = parts();
-        el.querySelector('[data-qty]').innerHTML = p.length ? `<p class="group-title">Quantités pour une portion</p><div class="ing-edit">${p.map(([id, q]) => {
+        el.querySelector('[data-qty]').innerHTML = p.length ? `<p class="group-title">Quantités pour une portion</p><p class="field-help">Riz, pâtes, semoule : le poids <b>cru</b>, avant cuisson. 80 g de riz cru donnent environ 200 g de riz cuit.</p><div class="ing-edit">${p.map(([id, q]) => {
           const ing = food.ingredient(id);
-          return `<div class="ing-row"><span class="ing-row-name">${esc(ing.name)}</span><label class="ing-row-qty"><input inputmode="decimal" data-qty-id="${esc(id)}" value="${esc(calc.numInput(q))}" aria-label="Quantité de ${esc(ing.name)}">${ing.unit === 'pc' ? 'pièce' : ing.unit}</label><button type="button" class="icon-btn" data-unpick="${esc(id)}" aria-label="Retirer ${esc(ing.name)}">${icon('close')}</button></div>`;
+          const sw = portions.swell(ing);
+          const kc = food.sumOf([[id, q]]).kcal;
+          return `<div class="ing-row"><span class="ing-row-name">${esc(ing.name)}<small data-row-hint="${esc(id)}">${calc.fmt0(kc)} kcal${sw ? `, pesé cru (≈ ${calc.fmt0(q * sw)} g une fois cuit)` : ''}</small></span><label class="ing-row-qty"><input inputmode="decimal" data-qty-id="${esc(id)}" value="${esc(calc.numInput(q))}" aria-label="Quantité de ${esc(ing.name)}${sw ? ', poids cru' : ''}">${ing.unit === 'pc' ? 'pièce' : sw ? 'g cru' : ing.unit}</label><button type="button" class="icon-btn" data-unpick="${esc(id)}" aria-label="Retirer ${esc(ing.name)}">${icon('close')}</button></div>`;
         }).join('')}</div>` : '';
       };
       const redraw = () => {
@@ -400,6 +402,9 @@ export function compoSheet({ day = null, slot = null, cur = null, sauce = null }
           const ing = food.ingredient(q.dataset.qtyId);
           const c = el.querySelector(`[data-part][data-id="${CSS.escape(q.dataset.qtyId)}"] small`);
           if (c) c.textContent = food.fmtQty(ing, v);
+          const h = el.querySelector(`[data-row-hint="${CSS.escape(q.dataset.qtyId)}"]`);
+          const sw = portions.swell(ing);
+          if (h) h.textContent = `${calc.fmt0(food.sumOf([[q.dataset.qtyId, v]]).kcal)} kcal${sw ? `, pesé cru (≈ ${calc.fmt0(v * sw)} g une fois cuit)` : ''}`;
           total();
         }
       });
