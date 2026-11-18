@@ -51,8 +51,9 @@ function baseStats(m, s) {
   // Macros saisies à la main : si au moins une est donnée, les autres comptent pour 0.
   const hasM = m.p != null || m.c != null || m.f != null;
   const mac = hasM ? { p: m.p ?? 0, c: m.c ?? 0, f: m.f ?? 0 } : { p: null, c: null, f: null };
-  if (m.kind === 'uber') return { kcal: m.kcal ?? s.uber.kcal, ...mac, cost: m.cost ?? s.uber.avg, home: false };
-  return { kcal: m.kcal ?? s.libreKcal, ...mac, cost: m.cost ?? 0, home: false };
+  // Note de frais : le repas compte (calories, macros) mais pas son prix
+  if (m.kind === 'uber') return { kcal: m.kcal ?? s.uber.kcal, ...mac, cost: m.refund ? 0 : m.cost ?? s.uber.avg, home: false };
+  return { kcal: m.kcal ?? s.libreKcal, ...mac, cost: m.refund ? 0 : m.cost ?? 0, home: false };
 }
 
 // Dessert d'un repas : simple (yaourt, fruit…) ou une part du dessert de la semaine.
@@ -687,8 +688,11 @@ export function periodStats(from, to) {
     meals: meals.length,
     homeMeals: home.length,
     homeAvg: home.length ? homeCost / home.length : null,
-    uber: meals.filter((m) => m.kind === 'uber').length,
-    uberCost: meals.filter((m) => m.kind === 'uber').reduce((n, m) => n + mealStats(m, s).cost, 0),
+    // une commande remboursée (repas pro) ne compte pas comme une commande perso
+    uber: meals.filter((m) => m.kind === 'uber' && !m.refund).length,
+    uberCost: meals.filter((m) => m.kind === 'uber' && !m.refund).reduce((n, m) => n + mealStats(m, s).cost, 0),
+    refunds: meals.filter((m) => m.refund).length,
+    refundCost: meals.filter((m) => m.refund).reduce((n, m) => n + (m.cost ?? (m.kind === 'uber' ? s.uber.avg : 0)), 0),
   };
 }
 

@@ -386,6 +386,8 @@ export function renderHelp(view, ctx) {
       <p>Les fonds de placard sont les achats réguliers qui ne dépendent pas des recettes. Ils reviennent dans la liste de courses chaque semaine ou chaque mois.</p>
       <h2 class="block-title">Ajouter un aliment</h2>
       <p>Dans Recettes, puis « Aliments » (ou Plus, puis « Aliments et prix »), « Ajouter un aliment » cherche le produit sur Open Food Facts, par nom ou avec les chiffres du code-barres. Calories, protéines, glucides et lipides se remplissent seuls, tu ajoutes le prix si tu veux. Il faut une connexion internet pour la recherche, l’aliment est ensuite enregistré et synchronisé comme le reste.</p>
+      <h2 class="block-title">Resto, commande, note de frais</h2>
+      <p>Un repas au resto ou une commande se note avec son prix, ses calories et, si tu les as estimées, ses macros. Un repas pro coché « Remboursé (note de frais) » compte pour les calories et les macros, mais pas dans tes dépenses ni comme une commande ; le Bilan te rappelle le montant à te faire rembourser.</p>
       <h2 class="block-title">Calories et macros</h2>
       <p>Les valeurs viennent de la table Ciqual 2020 de l’Anses (aliments crus, pour 100 g), sauf le skyr, la whey, le lait de coco allégé, le cottage cheese et le fromage frais type Philadelphia, pris sur des étiquettes moyennes, et les aliments que tu ajoutes depuis Open Food Facts. Elles dépendent des marques et des quantités réelles : vois-les comme des ordres de grandeur, suffisants pour suivre une tendance.</p>
       <p>L’objectif part de la formule de Mifflin-St Jeor multipliée par ton niveau d’activité. Ton poids réel sur quelques semaines reste le meilleur juge : si la tendance ne suit pas, ajuste de 100 à 200 kcal.</p>

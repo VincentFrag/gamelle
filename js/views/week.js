@@ -23,8 +23,8 @@ function mealSub(m) {
     if (m.mc) bits.push('Monsieur Cuisine');
     return bits.join(', ');
   }
-  if (m.kind === 'uber') return 'Commande';
-  return 'Repas libre';
+  if (m.kind === 'uber') return m.refund ? 'Commande, note de frais' : 'Commande';
+  return m.refund ? 'Repas libre, note de frais' : 'Repas libre';
 }
 
 function offerRow(day, prev) {
@@ -71,7 +71,7 @@ function mealRow(day, slot, s) {
       <span class="meal-name">${ico}${esc(plan.mealTitle(m))}</span>
       <span class="meal-sub">${esc(mealSub(m))}</span>
     </span>
-    <span class="meal-side">${priceTag(st.cost, { cls: m.kind === 'uber' ? 'is-uber' : '' })}<span class="meal-kcal">${calc.fmt0(st.kcal)} kcal</span></span>
+    <span class="meal-side">${m.refund ? (m.cost ? `<span class="refund-price" title="Remboursé">${esc(calc.fmtEur(m.cost))}</span>` : '') : priceTag(st.cost, { cls: m.kind === 'uber' ? 'is-uber' : '' })}<span class="meal-kcal">${calc.fmt0(st.kcal)} kcal</span></span>
   </button>${dessertLine}`;
 }
 

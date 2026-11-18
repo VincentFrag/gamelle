@@ -224,6 +224,7 @@ export function outsideSheet(day, slot, kind, cur) {
         <button type="button" class="chip" data-kcal="900">Normal, 900</button>
         <button type="button" class="chip" data-kcal="1300">Copieux, 1 300</button>
       </div>
+      <label class="switch"><input type="checkbox" name="refund" ${cur?.refund ? 'checked' : ''}><span>Remboursé (note de frais)<small>Repas pro : le prix ne compte pas dans tes dépenses${isUber ? ' ni comme une commande' : ''}. Les calories et les macros, si.</small></span></label>
       <p class="group-title">Macros (facultatif, en grammes)</p>
       <div class="field-row three">
         <label class="field"><span>Protéines</span><input name="p" inputmode="decimal" value="${esc(calc.numInput(cur?.p ?? null))}"></label>
@@ -244,6 +245,12 @@ export function outsideSheet(day, slot, kind, cur) {
         }
         const k = Math.round(p * 4 + c * 4 + f * 9);
         const kc = calc.parseNum(el.querySelector('[name=kcal]').value);
+        // tant que les trois ne sont pas remplies, pas de comparaison : il en manque forcément
+        const all = ['p', 'c', 'f'].every((n) => el.querySelector(`[name=${n}]`).value.trim() !== '');
+        if (!all) {
+          box.textContent = 'Les macros remplies comptent dans ta journée ; celles laissées vides comptent pour 0.';
+          return;
+        }
         box.textContent = `Tes macros font environ ${calc.fmt0(k)} kcal${kc ? (Math.abs(k - kc) > Math.max(150, kc * 0.2) ? ` : assez loin des ${calc.fmt0(kc)} kcal notées, l’un des deux est peut-être à revoir.` : ', cohérent avec tes calories.') : '. Laisse les calories vides pour utiliser ce chiffre.'}`;
       };
       el.addEventListener('input', check);
@@ -272,6 +279,7 @@ export function outsideSheet(day, slot, kind, cur) {
             cost: calc.parseNum(f.cost),
             kcal,
             p, c, f: fat,
+            refund: f.refund || undefined,
           });
           return true;
         },

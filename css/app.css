@@ -1176,3 +1176,4 @@ body[data-tab='plus'] { --sec: var(--sec-plus); }
   }
   .sheet-wrap.kb .sheet-actions { padding-top: 8px; padding-bottom: 8px; }
 }
+.refund-price { font-size: 14px; font-weight: 600; color: var(--ink-3); text-decoration: line-through; white-space: nowrap; }

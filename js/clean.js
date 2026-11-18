@@ -65,6 +65,8 @@ function meal(d, rowId) {
     c: num(d.c, 0, 1000),
     f: num(d.f, 0, 1000),
     label: str(d.label, 80),
+    // repas pro remboursé (note de frais) : le prix est gardé mais ne compte pas dans les dépenses
+    refund: bool(d.refund) || null,
     note: str(d.note, 300),
     done: bool(d.done) || null,
     mc: bool(d.mc) || null,

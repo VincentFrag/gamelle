@@ -73,6 +73,7 @@ export function renderBilan(view, ctx) {
         <div class="figure"><span class="fig-value">${st.homeAvg != null ? esc(calc.fmtEur(st.homeAvg).replace(/\s€$/, '')) : '–'}<small>€</small></span><span class="fig-label">le repas maison</span></div>
         <div class="figure"><span class="fig-value">${st.uber}</span><span class="fig-label">commande${st.uber > 1 ? 's' : ''}${st.uber ? `, ${esc(calc.fmtEur0(st.uberCost))}` : ''}</span></div>
       </div>
+      ${st.refunds ? `<p class="fine">Notes de frais : ${st.refunds} repas, ${esc(calc.fmtEur(st.refundCost))} à te faire rembourser, non comptés dans tes dépenses.</p>` : ''}
       ${view$.mode === 'semaine' && filled.length ? `<p class="fine">Sur un mois à ce rythme : environ ${esc(calc.fmtEur0((st.cost / filled.length) * 30.4))}.</p>` : ''}
     </section>
 
