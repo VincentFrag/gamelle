@@ -472,13 +472,64 @@ export function eyeballClick(e, chosen, ctx, { favKey = null, ui = {} } = {}) {
   return false;
 }
 
+// ---------- Parts du dessert de la semaine ----------
+// Choisies avec − et + (0 = pas de gâteau), à n'importe quel repas : dessert, petit-déj, collation.
+function cakeLots(day, m) {
+  return plan.bakesFor(day, m?.cake).map((b) => {
+    const r = food.recipe(b.recipe);
+    if (!r) return null;
+    const left = b.parts - plan.bakeUsed(b.id) + (m?.cake === b.id ? plan.cakeParts(m) : 0);
+    const st = food.recipeStats(r);
+    const f = (r.serves || 1) / b.parts;
+    return { b, r, left, kcal: st.kcal * f, p: st.p * f, c: st.c * f, f: st.f * f, cost: st.cost * f };
+  }).filter(Boolean);
+}
+
+function cakeBlock(lots, sel) {
+  if (!lots.length) return '';
+  return `<p class="group-title cake-title">Gâteau de la semaine</p><div class="mrows">${lots.map((x) => {
+    const n = sel.id === x.b.id ? sel.n : 0;
+    return `<div class="mrow ${n ? 'is-on' : ''}"><span class="mrow-name">${esc(x.r.name)}<small>${calc.fmt0(x.kcal)} kcal la part, ${x.left - n ? `encore ${food.fmtCount(x.left - n)} part${x.left - n > 1 ? 's' : ''} après` : 'plus aucune part après'}</small></span>
+      <span class="mstep"><button type="button" class="icon-btn small" data-cake-step="${esc(x.b.id)}" data-dir="-1" aria-label="Une part de moins" ${n ? '' : 'disabled'}>−</button><b>${n ? `${food.fmtCount(n)} part${n > 1 ? 's' : ''}` : 'Aucune'}</b><button type="button" class="icon-btn small" data-cake-step="${esc(x.b.id)}" data-dir="1" aria-label="Une part de plus" ${n >= x.left ? 'disabled' : ''}>+</button></span></div>`;
+  }).join('')}</div>`;
+}
+
+function cakeClick(e, sel, lots) {
+  const c = e.target.closest('[data-cake-step]');
+  if (!c) return false;
+  const x = lots.find((l) => l.b.id === c.dataset.cakeStep);
+  if (!x) return true;
+  const cur = sel.id === x.b.id ? sel.n : 0;
+  const n = Math.max(0, Math.min(x.left, cur + Number(c.dataset.dir)));
+  sel.id = n ? x.b.id : null;
+  sel.n = n;
+  return true;
+}
+
+function cakeStats(lots, sel) {
+  const x = sel.id && lots.find((l) => l.b.id === sel.id);
+  return x ? { name: `${x.r.name}, ${sel.n === 1 ? 'une part' : `${food.fmtCount(sel.n)} parts`}`, kcal: x.kcal * sel.n, p: x.p * sel.n, c: x.c * sel.n, f: x.f * sel.n, cost: x.cost * sel.n } : null;
+}
+
+// Total affiché : aliments à l'œil + parts de gâteau
+function freeTotal(chosen, lots, sel) {
+  const list = [...chosen];
+  const st = food.sumOf(list);
+  const ck = cakeStats(lots, sel);
+  const names = [...(ck ? [ck.name] : []), ...list.map(([id, q]) => portions.itemLabel(id, q))];
+  if (ck) for (const k of ['kcal', 'p', 'c', 'f', 'cost']) st[k] += ck[k];
+  if (!names.length) return { html: '<span class="fine">Rien de choisi pour l’instant.</span>', empty: true };
+  return { html: `<span class="compo-name">${esc(names.join(', ').replace(/^./, (c) => c.toUpperCase()))}</span><span class="compo-figs">${macros(st)} ${priceTag(st.cost)}</span>`, empty: false };
+}
+
 export function dessertSheet(day, slot) {
   const m = plan.getMeal(day, slot);
   const s = calc.settings();
   const chosen = new Map(m?.dessertParts || []);
   const simple = food.recipes().filter((r) => r.cat === 'dessert' && !food.isLot(r) && food.usable(r, s))
     .sort((a, b) => food.recipeStats(a).kcal - food.recipeStats(b).kcal);
-  const lots = plan.bakesFor(day, m?.cake).map((b) => ({ b, r: food.recipe(b.recipe) })).filter((x) => x.r);
+  const lots = cakeLots(day, m);
+  const sel = { id: m?.cake || null, n: plan.cakeParts(m) };
   // Suggestions : les classiques, plus ce que tu as déjà pris en dessert ou en craquage
   const suggest = [...new Set([...portions.DESSERT_ORDER, ...recentFree()])];
   const extra = `<button type="button" class="chip chip-add" data-other>${icon('add')} Autre aliment</button><button type="button" class="chip chip-add is-crack" data-crack>${icon('spark')} Craquage</button>`;
@@ -489,31 +540,25 @@ export function dessertSheet(day, slot) {
     body: `<section class="free-dessert">
         <h3 class="group-title">Mon dessert</h3>
         <p class="field-help">Touche ce que tu prends, règle la quantité avec − et +. « Craquage » cherche un produit du commerce (biscuits, barre, glace…) sur Open Food Facts.</p>
+        <div data-cake-box></div>
         <div data-eye-box></div>
         <div class="compo-total" data-total></div>
         <button type="button" class="btn primary block" data-save-free>Valider ce dessert</button>
       </section>
-      ${lots.length ? `<h3 class="group-title">Dessert de la semaine</h3><div class="list">${lots.map(({ b, r }) => {
-        const left = b.parts - plan.bakeUsed(b.id) + (m?.cake === b.id ? 1 : 0);
-        const st = food.recipeStats(r);
-        const f = (r.serves || 1) / b.parts;
-        return `<button type="button" class="list-row dessert-row ${m?.cake === b.id ? 'is-on' : ''}" data-cake="${esc(b.id)}"><span class="list-main">${esc(r.name)}, une part<small>${left} part${left > 1 ? 's' : ''} restante${left > 1 ? 's' : ''}, ${calc.fmt0(st.kcal * f)} kcal</small></span>${priceTag(st.cost * f)}</button>`;
-      }).join('')}</div>` : ''}
       <h3 class="group-title">Ou une recette de dessert</h3>
       <button type="button" class="btn block" data-suggest>${icon('shuffle')} Me proposer un dessert</button>
       <div class="list">${simple.map((r) => dessertRow(r, { on: m?.dessert === r.id, attr: `data-dessert="${esc(r.id)}"` })).join('')}</div>
       ${m?.dessert || m?.cake || m?.dessertParts ? '<button type="button" class="btn ghost block" data-none>Pas de dessert</button>' : ''}`,
     onMount(el, api) {
       const draw = () => {
+        el.querySelector('[data-cake-box]').innerHTML = cakeBlock(lots, sel);
         el.querySelector('[data-eye-box]').innerHTML = eyeball({ suggest, ctx: 'dessert', chosen, extra, favKey: 'dessert', ui });
-        const list = [...chosen];
-        const st = food.sumOf(list);
-        el.querySelector('[data-total]').innerHTML = list.length
-          ? `<span class="compo-name">${esc(list.map(([id, q]) => portions.itemLabel(id, q)).join(', ').replace(/^./, (c) => c.toUpperCase()))}</span><span class="compo-figs">${macros(st)} ${priceTag(st.cost)}</span>`
-          : '<span class="fine">Rien de choisi pour l’instant.</span>';
-        el.querySelector('[data-save-free]').disabled = !list.length;
+        const t = freeTotal(chosen, lots, sel);
+        el.querySelector('[data-total]').innerHTML = t.html;
+        el.querySelector('[data-save-free]').disabled = t.empty;
       };
       el.addEventListener('click', async (e) => {
+        if (cakeClick(e, sel, lots)) return draw();
         if (eyeballClick(e, chosen, 'dessert', { favKey: 'dessert', ui })) return draw();
         if (e.target.closest('[data-other]')) {
           const id = await pickIngredient({ title: 'Dessert' });
@@ -530,7 +575,7 @@ export function dessertSheet(day, slot) {
           return draw();
         }
         if (e.target.closest('[data-save-free]')) {
-          plan.setDessert(day, slot, { parts: [...chosen] });
+          plan.setDessert(day, slot, { parts: [...chosen], cake: sel.id, cakeN: sel.n || 1 });
           return api.close(true);
         }
         if (e.target.closest('[data-suggest]')) {
@@ -684,6 +729,8 @@ export async function freeMealSheet(day, slot) {
   const s = calc.settings();
   const cur = m && m.kind === 'compo' ? m : null;
   const chosen = new Map(cur?.parts || []);
+  const lots = cakeLots(day, cur);
+  const sel = { id: cur?.cake || null, n: plan.cakeParts(cur) };
   const isBreak = slot === 'petitdej';
   const what = isBreak ? 'petit-déj' : 'collation';
   const suggest = [...(isBreak ? portions.BREAKFAST_ORDER : portions.SNACK_ORDER), ...recentFree()];
@@ -696,6 +743,7 @@ export async function freeMealSheet(day, slot) {
     body: `<section class="free-dessert free-meal">
         <h3 class="group-title">${isBreak ? 'Mon petit-déj' : 'Ma collation'}</h3>
         <p class="field-help">Touche ce que tu prends, règle la quantité avec − et +. Ce que tu ajoutes toi-même reste proposé la prochaine fois.</p>
+        <div data-cake-box></div>
         <div data-eye-box></div>
         <div class="compo-total" data-total></div>
         <button type="button" class="btn primary block" data-save-free>Valider ${isBreak ? 'ce petit-déj' : 'cette collation'}</button>
@@ -704,15 +752,14 @@ export async function freeMealSheet(day, slot) {
       <button type="button" class="link-btn" data-more>Autres options (commande, repas libre…)</button>`,
     onMount(el, api) {
       const draw = () => {
+        el.querySelector('[data-cake-box]').innerHTML = cakeBlock(lots, sel);
         el.querySelector('[data-eye-box]').innerHTML = eyeball({ suggest, ctx: 'dessert', chosen, extra, favKey: slot, ui });
-        const list = [...chosen];
-        const st = food.sumOf(list);
-        el.querySelector('[data-total]').innerHTML = list.length
-          ? `<span class="compo-name">${esc(list.map(([id, q]) => portions.itemLabel(id, q)).join(', ').replace(/^./, (c) => c.toUpperCase()))}</span><span class="compo-figs">${macros(st)} ${priceTag(st.cost)}</span>`
-          : '<span class="fine">Rien de choisi pour l’instant.</span>';
-        el.querySelector('[data-save-free]').disabled = !list.length;
+        const t = freeTotal(chosen, lots, sel);
+        el.querySelector('[data-total]').innerHTML = t.html;
+        el.querySelector('[data-save-free]').disabled = t.empty;
       };
       el.addEventListener('click', async (e) => {
+        if (cakeClick(e, sel, lots)) return draw();
         if (eyeballClick(e, chosen, 'dessert', { favKey: slot, ui })) return draw();
         if (e.target.closest('[data-other]')) {
           const id = await pickIngredient({ title: isBreak ? 'Petit-déj' : 'Collation' });
@@ -745,7 +792,7 @@ export async function freeMealSheet(day, slot) {
     return true;
   }
   if (res.parts.length > 10) toast('10 éléments au plus : les derniers ont été retirés.', { kind: 'error' });
-  plan.setMeal(day, slot, { kind: 'compo', parts: res.parts.slice(0, 10), portions: 1, cooked: 1 });
+  plan.setMeal(day, slot, { kind: 'compo', parts: res.parts.slice(0, 10), portions: 1, cooked: 1, cake: sel.id || undefined, cakeN: sel.id && sel.n !== 1 ? sel.n : undefined });
   toast(`${isBreak ? 'Petit-déj' : 'Collation'} enregistré${isBreak ? '' : 'e'}.`);
   return true;
 }

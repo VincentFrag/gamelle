@@ -53,24 +53,41 @@ function baseStats(m, s) {
 }
 
 // Dessert d'un repas : simple (yaourt, fruit…) ou une part du dessert de la semaine.
+// Parts du dessert de la semaine prises à ce repas
+export const cakeParts = (m) => (m && m.cake ? m.cakeN ?? 1 : 0);
+
+// « Gâteau au yaourt, 2 parts »
+export function cakeLabel(m) {
+  const b = m && m.cake && store.get('bake', m.cake);
+  const r = b && food.recipe(b.data.recipe);
+  if (!r) return '';
+  const n = cakeParts(m);
+  return `${r.name}, ${n === 1 ? 'une part' : `${food.fmtCount(n)} parts`}`;
+}
+
+// Le dessert peut mêler une part de gâteau de la semaine et des choses prises à l'œil.
 export function dessertOf(m) {
+  const pieces = [];
   if (m.cake) {
     const b = store.get('bake', m.cake);
     const r = b && food.recipe(b.data.recipe);
-    if (!r) return null;
-    const st = food.recipeStats(r);
-    return { name: `${r.name}, une part`, recipe: r, bake: b.id, ...scaled(st, (r.serves || 1) / b.data.parts) };
+    if (r) pieces.push({ name: cakeLabel(m), recipe: r, bake: b.id, ...scaled(food.recipeStats(r), ((r.serves || 1) / b.data.parts) * cakeParts(m)) });
   }
   if (m.dessert) {
     const r = food.recipe(m.dessert);
-    if (!r) return null;
-    return { name: r.name, recipe: r, ...scaled(food.recipeStats(r), 1) };
+    if (r) pieces.push({ name: r.name, recipe: r, ...scaled(food.recipeStats(r), 1) });
   }
   if (m.dessertParts && m.dessertParts.length) {
     const name = m.dessertParts.map(([id, q]) => portions.itemLabel(id, q)).filter(Boolean).join(', ');
-    return { name: name.charAt(0).toUpperCase() + name.slice(1), parts: m.dessertParts, ...scaled(food.sumOf(m.dessertParts), 1) };
+    pieces.push({ name, parts: m.dessertParts, ...scaled(food.sumOf(m.dessertParts), 1) });
   }
-  return null;
+  if (!pieces.length) return null;
+  if (pieces.length === 1) return { ...pieces[0], name: pieces[0].name.charAt(0).toUpperCase() + pieces[0].name.slice(1) };
+  const out = { ...pieces[0], name: '', kcal: 0, p: 0, c: 0, f: 0, cost: 0, parts: m.dessertParts };
+  for (const x of pieces) for (const k of ['kcal', 'p', 'c', 'f', 'cost']) out[k] += x[k] || 0;
+  const name = pieces.map((x) => x.name).join(', ');
+  out.name = name.charAt(0).toUpperCase() + name.slice(1);
+  return out;
 }
 
 export function mealStats(m, s = calc.settings()) {
@@ -85,6 +102,11 @@ export function mealStats(m, s = calc.settings()) {
 }
 
 export function mealTitle(m) {
+  // petit-déj ou collation composés : la part de gâteau fait partie du repas
+  if (m.kind === 'compo' && (m.slot === 'petitdej' || m.slot === 'collation') && m.cake) {
+    const rest = m.parts?.length ? food.compoTitle(m.parts).toLowerCase() : '';
+    return [cakeLabel(m), rest].filter(Boolean).join(', ');
+  }
   if (isPlate(m)) return food.compoTitle(m.parts, m.sauce, m.sauceParts);
   if (m.kind === 'recette' || m.kind === 'reste') return food.recipe(m.recipe)?.name || 'Recette supprimée';
   if (m.kind === 'uber') return m.label || 'Commande Uber Eats';
@@ -172,6 +194,7 @@ export function setMeal(day, slot, data) {
     const meal = { ...data, day, slot };
     delete meal.id;
     if (prev && !('dessert' in data) && !('cake' in data) && !('dessertParts' in data)) {
+      if (prev.cakeN) meal.cakeN = prev.cakeN;
       if (prev.dessert) meal.dessert = prev.dessert;
       if (prev.dessertParts) meal.dessertParts = prev.dessertParts;
       if (prev.cake) meal.cake = prev.cake;
@@ -256,15 +279,19 @@ export function removeMeal(day, slot) {
 }
 
 // ---------- Desserts ----------
-export function setDessert(day, slot, { dessert = null, cake = null, parts = null } = {}) {
+export function setDessert(day, slot, { dessert = null, cake = null, cakeN = 1, parts = null } = {}) {
   const m = getMeal(day, slot);
   if (!m) return;
   const { id: _i, ...data } = m;
   delete data.dessert;
   delete data.cake;
+  delete data.cakeN;
   delete data.dessertParts;
   if (dessert) data.dessert = dessert;
-  if (cake) data.cake = cake;
+  if (cake) {
+    data.cake = cake;
+    if (cakeN !== 1) data.cakeN = cakeN;
+  }
   if (parts && parts.length) data.dessertParts = parts;
   store.put('meal', m.id, data);
 }
@@ -308,7 +335,7 @@ export function bakes() {
 }
 
 export function bakeUsed(id) {
-  return store.all('meal').filter((r) => r.data.cake === id).length;
+  return store.all('meal').filter((r) => r.data.cake === id).reduce((n, r) => n + (r.data.cakeN ?? 1), 0);
 }
 
 // Desserts de la semaine préparés dans la semaine affichée
@@ -592,7 +619,7 @@ export function generate(start, mode = 'fill') {
       if (cur && !m.dessert && !m.cake && !m.dessertParts) {
         if (cur.dessert) m.dessert = cur.dessert;
         if (cur.dessertParts) m.dessertParts = cur.dessertParts;
-        if (cur.cake) m.cake = cur.cake;
+        if (cur.cake) { m.cake = cur.cake; if (cur.cakeN) m.cakeN = cur.cakeN; }
       }
       if (cur && JSON.stringify({ ...cur, id: undefined }) === JSON.stringify({ ...m, id: undefined })) continue;
       const { id: _drop, ...data } = m;

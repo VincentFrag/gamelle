@@ -1141,3 +1141,7 @@ body[data-tab='plus'] { --sec: var(--sec-plus); }
 .chip.is-removable { border-style: dashed; color: var(--danger, #B3261E); }
 .chip.is-removable .icon { width: 14px; height: 14px; }
 .fav-edit { min-height: 32px; padding: 0; margin-top: 4px; font-size: 13.5px; color: var(--ink-3); }
+.cake-title { margin: 4px 0 6px; }
+.mrow.is-on { border-color: color-mix(in srgb, var(--c-dessert) 50%, var(--line)); background: color-mix(in srgb, var(--c-dessert) 8%, var(--surface)); }
+.mstep .icon-btn:disabled { opacity: .35; }
+[data-cake-box]:not(:empty) + [data-eye-box] { margin-top: 12px; }

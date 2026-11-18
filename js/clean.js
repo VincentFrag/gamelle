@@ -68,6 +68,8 @@ function meal(d, rowId) {
     sauce: id(d.sauce),
     dessert: id(d.dessert),
     cake: id(d.cake),
+    // nombre de parts du dessert de la semaine (1 par défaut)
+    cakeN: d.cake && d.cakeN != null && Number(d.cakeN) !== 1 && num(d.cakeN, 0.5, 8) ? Math.round(num(d.cakeN, 0.5, 8) * 2) / 2 : null,
   });
   out.parts = pairs(d.parts, 10);
   if (!out.parts.length) delete out.parts;
@@ -76,7 +78,7 @@ function meal(d, rowId) {
   if (!out.sauceParts.length) delete out.sauceParts;
   out.dessertParts = pairs(d.dessertParts, 8);
   if (!out.dessertParts.length) delete out.dessertParts;
-  if (out.kind === 'compo' && !out.parts && !out.sauce && !out.sauceParts) return null;
+  if (out.kind === 'compo' && !out.parts && !out.sauce && !out.sauceParts && !out.cake) return null;
   return out.day && out.slot && out.kind ? out : null;
 }
 

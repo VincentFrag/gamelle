@@ -15,7 +15,7 @@ import {
   renderMore, renderProfile, renderPrefs, renderPrices, renderAccount, renderBackup, renderHelp,
 } from './views/more.js';
 
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.4.2';
 
 const routes = [
   [/^\/semaine$/, renderWeek, 'semaine'],
