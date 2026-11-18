@@ -92,12 +92,37 @@ function bindViewport() {
   };
   vv.addEventListener('resize', () => { set(); requestAnimationFrame(reveal); });
   vv.addEventListener('scroll', set);
+  // Sur téléphone, on ne compte pas sur l'iPhone pour signaler le clavier : dès qu'on touche
+  // un champ, la fenêtre remonte en haut de l'écran et se limite à la moitié haute, la zone
+  // que le clavier ne couvre jamais. Elle redescend quand on quitte les champs.
+  const touch = () => window.matchMedia('(pointer: coarse)').matches;
+  const isField = (t) => t && t.matches && t.matches('input:not([type=checkbox]):not([type=radio]), textarea, select') && t.closest('.sheet');
+  let lowerTimer = null;
+  const raise = (t) => {
+    if (!touch() || t.tagName === 'SELECT') return;
+    clearTimeout(lowerTimer);
+    const wrap = t.closest('.sheet-wrap');
+    if (!wrap || wrap.classList.contains('kb')) return;
+    // le toucher qui a donné le focus n'est pas fini (le « click » arrive juste après) :
+    // on bouge la fenêtre un instant plus tard, et on ignore un toucher sur le fond pendant ce temps
+    wrap.dataset.raisedAt = String(Date.now() + 80);
+    setTimeout(() => { if (document.activeElement === t) { wrap.classList.add('kb'); reveal(); } }, 80);
+  };
   document.addEventListener('focusin', (e) => {
-    if (!e.target.matches('input, textarea, select') || !e.target.closest('.sheet')) return;
+    if (!isField(e.target)) return;
     focused = e.target;
+    raise(e.target);
+    requestAnimationFrame(reveal);
     // le clavier met environ 300 ms à monter ; on vérifie après, et encore une fois par sécurité
     setTimeout(reveal, 320);
     setTimeout(reveal, 650);
+  });
+  document.addEventListener('focusout', (e) => {
+    if (!isField(e.target)) return;
+    const wrap = e.target.closest('.sheet-wrap');
+    lowerTimer = setTimeout(() => {
+      if (!isField(document.activeElement)) wrap?.classList.remove('kb');
+    }, 250);
   });
   set();
 }
@@ -138,6 +163,8 @@ export function openSheet({ title, body, actions = [], onMount, wide = false, to
     };
     document.addEventListener('keydown', onKey);
     wrap.addEventListener('click', async (e) => {
+      // fond touché juste après qu'un champ a fait remonter la fenêtre : on ne ferme pas
+      if (e.target.classList.contains('sheet-backdrop') && Date.now() - Number(wrap.dataset.raisedAt || 0) < 600) return;
       if (e.target.closest('[data-close]')) return close(null);
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
