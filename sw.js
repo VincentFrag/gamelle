@@ -1,7 +1,7 @@
 // Service worker : met l'app en cache pour qu'elle s'ouvre sans réseau.
 // À CHAQUE MODIFICATION DES FICHIERS, augmente ce numéro de version
 // pour que les appareils récupèrent la nouvelle version.
-const VERSION = 'gamelle-v1.5.1';
+const VERSION = 'gamelle-v1.5.2';
 
 const ASSETS = [
   './',

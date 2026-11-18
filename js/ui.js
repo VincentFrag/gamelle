@@ -64,7 +64,26 @@ export function icon(name, cls = '') {
 // ---------- Feuille modale ----------
 let sheetStack = [];
 
-export function openSheet({ title, body, actions = [], onMount, wide = false }) {
+// Clavier de l'iPhone : la fenêtre se cale sur la partie visible de l'écran (au-dessus du clavier),
+// pour que le haut (titre, recherche) ne sorte jamais de l'écran.
+let vvBound = false;
+function bindViewport() {
+  if (vvBound || !window.visualViewport) return;
+  vvBound = true;
+  const vv = window.visualViewport;
+  const set = () => {
+    const r = document.documentElement.style;
+    r.setProperty('--vvh', `${Math.round(vv.height)}px`);
+    r.setProperty('--vvt', `${Math.round(vv.offsetTop)}px`);
+  };
+  vv.addEventListener('resize', set);
+  vv.addEventListener('scroll', set);
+  set();
+}
+
+// top : contenu fixe sous le titre (recherche), qui ne défile pas avec la liste.
+export function openSheet({ title, body, actions = [], onMount, wide = false, top = '' }) {
+  bindViewport();
   return new Promise((resolve) => {
     const wrap = document.createElement('div');
     wrap.className = 'sheet-wrap';
@@ -75,6 +94,7 @@ export function openSheet({ title, body, actions = [], onMount, wide = false }) 
           <h2 id="sheet-title">${esc(title)}</h2>
           <button class="icon-btn" data-close aria-label="${esc('Fermer')}">${icon('close')}</button>
         </header>
+        ${top ? `<div class="sheet-top">${top}</div>` : ''}
         <div class="sheet-body">${body || ''}</div>
         ${actions.length ? `<footer class="sheet-actions">${actions
           .map((a, i) => `<button class="btn ${a.kind || ''}" data-action="${i}" type="${a.submit ? 'submit' : 'button'}">${esc(a.label)}</button>`)
@@ -112,7 +132,9 @@ export function openSheet({ title, body, actions = [], onMount, wide = false }) 
     if (onMount) onMount(wrap, api);
     requestAnimationFrame(() => {
       wrap.classList.add('open');
-      const first = wrap.querySelector('[autofocus]') || wrap.querySelector('.sheet-head button');
+      // Sur téléphone, pas de clavier qui s'ouvre tout seul : on touche la recherche quand on veut.
+      const touch = window.matchMedia('(pointer: coarse)').matches;
+      const first = (!touch && wrap.querySelector('[autofocus]')) || wrap.querySelector('.sheet-head button');
       if (first) first.focus({ preventScroll: true });
     });
   });

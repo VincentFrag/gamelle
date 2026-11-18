@@ -37,14 +37,12 @@ export async function pickIngredient({ title = 'Aliment', group = null } = {}) {
   return openSheet({
     title,
     wide: true,
-    body: `<div class="pick-head">
-        <label class="search"><span class="sr-only">Rechercher</span><input type="search" placeholder="Rechercher un aliment" data-q autocomplete="off" autofocus></label>
-        <div class="pick-actions">
-          <button type="button" class="chip chip-add" data-off>${icon('search')} Open Food Facts</button>
-          <button type="button" class="chip chip-add" data-new>${icon('edit')} Créer à la main</button>
-        </div>
-      </div>
-      <div class="list" data-results></div>`,
+    top: `<label class="search"><span class="sr-only">Rechercher</span><input type="search" placeholder="Rechercher un aliment" data-q autocomplete="off" autofocus></label>
+      <div class="pick-actions">
+        <button type="button" class="chip chip-add" data-off>${icon('search')} Open Food Facts</button>
+        <button type="button" class="chip chip-add" data-new>${icon('edit')} Créer à la main</button>
+      </div>`,
+    body: `<div class="list" data-results></div>`,
     onMount(el, api) {
       const draw = () => {
         const nq = food.norm(q);
@@ -86,11 +84,11 @@ export async function offSheet(initial = '') {
   const res = await openSheet({
     title: 'Open Food Facts',
     wide: true,
-    body: `<form class="off-form" data-search>
+    top: `<form class="off-form" data-search>
         <label class="search"><span class="sr-only">Nom ou code-barres</span><input type="search" name="q" value="${esc(initial)}" placeholder="Nom du produit ou code-barres" autocomplete="off" enterkeyhint="search" autofocus></label>
         <button class="btn primary" type="submit">${icon('search')} Chercher</button>
-      </form>
-      <p class="field-help">Tape le nom (ex. : skyr vanille) ou les chiffres sous le code-barres. Les valeurs viennent de la base collaborative Open Food Facts : jette un œil à l’étiquette si un chiffre te paraît bizarre.</p>
+      </form>`,
+    body: `<p class="field-help">Tape le nom (ex. : skyr vanille) ou les chiffres sous le code-barres. Les valeurs viennent de la base collaborative Open Food Facts : jette un œil à l’étiquette si un chiffre te paraît bizarre.</p>
       <div data-off-results></div>`,
     onMount(el, api) {
       const box = el.querySelector('[data-off-results]');
@@ -163,11 +161,11 @@ export async function productSheet({ title = 'Craquage', recent = [] } = {}) {
   const res = await openSheet({
     title,
     wide: true,
-    body: `<form class="off-form" data-search>
+    top: `<form class="off-form" data-search>
         <label class="search"><span class="sr-only">Produit ou code-barres</span><input type="search" name="q" placeholder="Ex. : Kinder Bueno, Pringles, Magnum" autocomplete="off" enterkeyhint="search" autofocus></label>
         <button class="btn primary" type="submit">${icon('search')} Chercher</button>
-      </form>
-      <p class="field-help">Cherche un produit du commerce par son nom ou son code-barres : calories et macros viennent d’Open Food Facts, par portion quand le paquet l’indique.</p>
+      </form>`,
+    body: `<p class="field-help">Cherche un produit du commerce par son nom ou son code-barres : calories et macros viennent d’Open Food Facts, par portion quand le paquet l’indique.</p>
       ${mine.length ? `<h3 class="group-title">Tes craquages récents</h3><div class="list off-list">${mine.map((i) => `<button type="button" class="list-row" data-mine="${esc(i.id)}"><span class="list-main">${esc(i.name)}<small>${i.unit === 'pc' && i.pw ? `1 portion (${calc.fmt0(i.pw)} g) : ${calc.fmt0((i.kcal * i.pw) / 100)} kcal` : `${calc.fmt0(i.kcal)} kcal pour 100 g`}</small></span>${icon('add')}</button>`).join('')}</div>` : ''}
       <div data-off-results></div>`,
     onMount(el, api) {
@@ -205,6 +203,8 @@ export async function productSheet({ title = 'Craquage', recent = [] } = {}) {
 }
 
 // ---------- Créer ou modifier un aliment perso ----------
+const UNIT_CHOICES = { g: 'Au poids (en grammes)', ml: 'Au volume (en millilitres)', pc: 'À la pièce (un œuf, un pot…)' };
+const PRICE_LABELS = { g: 'Prix au kilo (€)', ml: 'Prix au litre (€)', pc: 'Prix d’une pièce (€)' };
 export async function editIngredient(id, prefill = {}) {
   const cur = id ? food.ingredient(id) : { ...prefill };
   const v = (k) => esc(calc.numInput(cur?.[k] ?? null));
@@ -215,12 +215,13 @@ export async function editIngredient(id, prefill = {}) {
     body: `<form class="form" data-form>
       ${fromOff ? `<p class="pep small ok">${icon('check')}<span>Valeurs remplies depuis Open Food Facts. Ajoute juste le prix si tu le connais.</span></p>` : ''}
       <label class="field"><span>Nom</span><input name="name" maxlength="80" value="${esc(cur?.name || '')}" required></label>
-      <div class="field-row">
-        <label class="field"><span>Rayon</span><select name="rayon">${RAYONS.map((r) => `<option value="${r}" ${(cur?.rayon || 'autre') === r ? 'selected' : ''}>${esc(food.RAYON_LABELS[r])}</option>`).join('')}</select></label>
-        <label class="field"><span>Compté en</span><select name="unit">${UNITS.map((u) => `<option value="${u}" ${(cur?.unit || 'g') === u ? 'selected' : ''}>${esc(food.UNIT_LABELS[u])}</option>`).join('')}</select></label>
+      <label class="field"><span>Rayon</span><select name="rayon">${RAYONS.map((r) => `<option value="${r}" ${(cur?.rayon || 'autre') === r ? 'selected' : ''}>${esc(food.RAYON_LABELS[r])}</option>`).join('')}</select></label>
+      <label class="field"><span>Tu le comptes</span><select name="unit">${UNITS.map((u) => `<option value="${u}" ${(cur?.unit || 'g') === u ? 'selected' : ''}>${esc(UNIT_CHOICES[u])}</option>`).join('')}</select></label>
+      <div data-pw ${(cur?.unit || 'g') === 'pc' ? '' : 'hidden'}>
+        <label class="field"><span>Poids d’une pièce (g)</span><input name="pw" inputmode="decimal" value="${v('pw')}" placeholder="Ex. : 60 pour un œuf, 125 pour un pot"></label>
+        <p class="field-help">Les calories sont données pour 100 g : avec le poids d’une pièce, Gamelle calcule celles d’une pièce.</p>
       </div>
-      <label class="field"><span>Poids d’une pièce (g), si compté en pièces</span><input name="pw" inputmode="decimal" value="${v('pw')}"></label>
-      <div class="block-head"><p class="field-help nomargin">Valeurs pour 100 g, sur l’étiquette.</p>${fromOff ? '' : `<button type="button" class="btn small" data-fill>${icon('search')} Remplir avec Open Food Facts</button>`}</div>
+      <div class="block-head"><p class="field-help nomargin" data-per>Valeurs pour 100 ${(cur?.unit || 'g') === 'ml' ? 'ml' : 'g'}, sur l’étiquette.</p>${fromOff ? '' : `<button type="button" class="btn small" data-fill>${icon('search')} Remplir avec Open Food Facts</button>`}</div>
       <div class="field-row four">
         <label class="field"><span>kcal</span><input name="kcal" inputmode="decimal" value="${v('kcal')}"></label>
         <label class="field"><span>Prot.</span><input name="p" inputmode="decimal" value="${v('p')}"></label>
@@ -228,11 +229,19 @@ export async function editIngredient(id, prefill = {}) {
         <label class="field"><span>Lip.</span><input name="f" inputmode="decimal" value="${v('f')}"></label>
       </div>
       <input type="hidden" name="fib" value="${v('fib')}"><input type="hidden" name="src" value="${esc(cur?.src && cur.src !== 'ajouté par toi' ? cur.src : '')}">
-      <label class="field"><span>Prix (€ le kg, le litre ou la pièce)</span><input name="price" inputmode="decimal" value="${v('price')}" placeholder="Facultatif"></label>
+      <label class="field"><span data-price-label>${esc(PRICE_LABELS[cur?.unit || 'g'])}</span><input name="price" inputmode="decimal" value="${v('price')}" placeholder="Facultatif"></label>
+      <p class="field-help">Pour suivre ce que coûtent tes repas. Sur l’étiquette du rayon, le prix au kilo est écrit en petit sous le prix du produit.</p>
       <label class="switch"><input type="checkbox" name="staple" ${cur?.staple ? 'checked' : ''}><span>Produit de placard<small>Toujours à la maison : il apparaît « à vérifier » dans la liste de courses.</small></span></label>
       ${cur?.src && cur.src !== 'ajouté par toi' ? `<p class="fine">Source : ${esc(cur.src)}.</p>` : ''}
     </form>`,
     onMount(el) {
+      // Le poids d'une pièce n'apparaît que pour un aliment compté en pièces
+      el.querySelector('[name=unit]').addEventListener('change', (e) => {
+        const u = e.target.value;
+        el.querySelector('[data-pw]').hidden = u !== 'pc';
+        el.querySelector('[data-price-label]').textContent = PRICE_LABELS[u];
+        el.querySelector('[data-per]').textContent = `Valeurs pour 100 ${u === 'ml' ? 'ml' : 'g'}, sur l’étiquette.`;
+      });
       el.addEventListener('click', async (e) => {
         if (!e.target.closest('[data-fill]')) return;
         const f = formData(el);

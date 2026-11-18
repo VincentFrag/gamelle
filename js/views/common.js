@@ -66,11 +66,9 @@ export function pickRecipe({ title = 'Choisir une recette', cat = null, cats = [
   return openSheet({
     title,
     wide: true,
-    body: `<label class="search"><span class="sr-only">Rechercher</span><input type="search" placeholder="Rechercher une recette ou un ingrédient" data-q autocomplete="off"></label>
-      <div class="chips tight" role="group" aria-label="Type">
-        ${cats.length > 1 ? cats.map((k) => `<button type="button" class="chip ${k === filter ? 'is-on' : ''}" data-cat="${k}">${esc(food.CAT_LABELS[k])}</button>`).join('') : ''}
-      </div>
-      ${create ? `<button type="button" class="btn primary block" data-create>${icon('add')} ${esc(create)}</button>` : ''}
+    top: `<label class="search"><span class="sr-only">Rechercher</span><input type="search" placeholder="Rechercher une recette ou un ingrédient" data-q autocomplete="off"></label>
+      ${cats.length > 1 ? `<div class="chips tight" role="group" aria-label="Type">${cats.map((k) => `<button type="button" class="chip ${k === filter ? 'is-on' : ''}" data-cat="${k}">${esc(food.CAT_LABELS[k])}</button>`).join('')}</div>` : ''}`,
+    body: `${create ? `<button type="button" class="btn primary block" data-create>${icon('add')} ${esc(create)}</button>` : ''}
       <div class="list pick-results" data-results></div>`,
     onMount(el, api) {
       const draw = () => {

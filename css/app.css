@@ -1152,3 +1152,14 @@ body[data-tab='plus'] { --sec: var(--sec-plus); }
 .pick-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .pick-actions .icon { width: 15px; height: 15px; }
 .bake .btn.small { flex: none; }
+
+/* 1.5.2 : fenêtres au-dessus du clavier (iPhone), recherche hors de la zone qui défile */
+.sheet-wrap { inset: auto 0 auto 0; top: var(--vvt, 0px); height: var(--vvh, 100dvh); }
+.sheet { max-height: calc(var(--vvh, 100dvh) - var(--safe-t) - 12px); }
+@media (min-width: 640px) { .sheet { max-height: min(86dvh, calc(var(--vvh, 100dvh) - 24px)); } }
+.sheet-top { padding: 2px 18px 10px; border-bottom: 1px solid var(--line); flex: none; }
+.sheet-top .search { position: static; padding-bottom: 0; background: transparent; }
+.sheet-top .search + .pick-actions, .sheet-top .search + .chips { margin-top: 8px; }
+.sheet-top .chips { margin-bottom: 0; }
+.sheet-top + .sheet-body { padding-top: 12px; }
+.sheet-body { flex: 1 1 auto; min-height: 0; }
