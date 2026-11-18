@@ -37,15 +37,14 @@ export async function pickIngredient({ title = 'Aliment', group = null } = {}) {
   return openSheet({
     title,
     wide: true,
-    body: `<label class="search"><span class="sr-only">Rechercher</span><input type="search" placeholder="Rechercher un aliment" data-q autocomplete="off" autofocus></label>
-      <div class="list" data-results></div>
-      <div class="add-food">
-        <p class="group-title">Pas dans la liste ?</p>
-        <div class="row-actions">
-          <button type="button" class="btn primary" data-off>${icon('search')} Chercher sur Open Food Facts</button>
-          <button type="button" class="btn" data-new>${icon('edit')} Créer à la main</button>
+    body: `<div class="pick-head">
+        <label class="search"><span class="sr-only">Rechercher</span><input type="search" placeholder="Rechercher un aliment" data-q autocomplete="off" autofocus></label>
+        <div class="pick-actions">
+          <button type="button" class="chip chip-add" data-off>${icon('search')} Open Food Facts</button>
+          <button type="button" class="chip chip-add" data-new>${icon('edit')} Créer à la main</button>
         </div>
-      </div>`,
+      </div>
+      <div class="list" data-results></div>`,
     onMount(el, api) {
       const draw = () => {
         const nq = food.norm(q);

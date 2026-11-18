@@ -2,7 +2,7 @@
 import * as calc from '../calc.js';
 import * as food from '../food.js';
 import * as plan from '../plan.js';
-import { esc, icon, menuSheet, confirmSheet, toast } from '../ui.js';
+import { esc, icon, menuSheet, confirmSheet, toast, openSheet, formData } from '../ui.js';
 import { priceTag, mealActions, gauge, pickRecipe, bakeSheet, dessertSheet, myCakeSheet } from './common.js';
 import { todayCard, todayClick, craquageSheet, snackRow } from './today.js';
 
@@ -55,8 +55,9 @@ function mealRow(day, slot, s) {
   const d = plan.dessertOf(m);
   const ico = m.kind === 'reste' ? icon('box', 'meal-ico') : m.kind === 'uber' ? icon('bike', 'meal-ico') : m.done ? icon('check', 'meal-ico') : m.kind === 'compo' ? icon('fork', 'meal-ico') : '';
   const main = slot === 'midi' || slot === 'soir';
+  const cakeOnly = m.kind === 'compo' && m.cake && !m.parts?.length && !m.sauce && !m.sauceParts;
   // Le dessert a sa propre ligne sous le midi et le soir : « + Dessert », ou le dessert choisi
-  const dessertLine = !main ? '' : d
+  const dessertLine = !main || cakeOnly ? '' : d
     ? `<button class="meal-dessert-row has-dessert" data-dessert-day="${day}" data-dessert-slot="${slot}" style="--slot: var(--sl-${slot})"><span class="dr-label">Dessert</span><span class="dr-name">${esc(d.name)}</span><span class="dr-kcal">${calc.fmt0(d.kcal)} kcal</span></button>`
     : `<button class="meal-dessert-row" data-dessert-day="${day}" data-dessert-slot="${slot}" style="--slot: var(--sl-${slot})"><span class="dr-label"></span><span class="dr-name">${icon('add')} Dessert</span></button>`;
   return `<button class="meal k-${m.kind}${m.done ? ' is-done' : ''}" data-slot="${slot}" data-day="${day}">
@@ -112,9 +113,10 @@ function bakeCard(b, today) {
   return `<div class="bake">
     <div class="bake-main">
       <span class="bake-name">${esc(r.name)}</span>
-      <small>${esc(when)}, ${left} part${left > 1 ? 's' : ''} sur ${b.parts} pas encore prévue${left > 1 ? 's' : ''}, ${calc.fmt0(st.kcal * f)} kcal la part</small>
+      <small>${esc(when)}, ${left ? `${left} part${left > 1 ? 's' : ''} restante${left > 1 ? 's' : ''} sur ${b.parts}` : 'plus aucune part'}, ${calc.fmt0(st.kcal * f)} kcal la part</small>
     </div>
     ${priceTag(st.cost * f)}
+    ${left ? `<button class="btn small" data-take="${esc(b.id)}">Prendre</button>` : ''}
     <button class="icon-btn" data-bake="${esc(b.id)}" aria-label="Actions pour ${esc(r.name)}">${icon('more')}</button>
   </div>`;
 }
@@ -236,7 +238,8 @@ export function renderWeek(view, ctx, startParam) {
         ...(r && !r.base ? [{ label: 'Modifier mon gâteau', value: 'edit', icon: 'edit' }] : []),
         { label: 'Changer de gâteau', value: 'swap', icon: 'shuffle' },
         { label: b.done ? 'Annuler « préparé »' : 'Marquer comme préparé', value: 'done', icon: 'check' },
-        { label: 'Une part en dessert ce soir', value: 'tonight', icon: 'add' },
+        { label: 'Prendre des parts', value: 'take', icon: 'add' },
+        ...(plan.bakeUsed(b.id) ? [{ label: 'Retirer les parts prévues à partir d’aujourd’hui', value: 'release', icon: 'minus' }] : []),
         { label: 'Retirer', value: 'del', icon: 'trash', danger: true },
       ]);
       if (c === 'open') ctx.go(`/recettes/${r.id}?p=${r.serves}`);
@@ -258,13 +261,19 @@ export function renderWeek(view, ctx, startParam) {
         plan.setBakeDone(b, !b.done);
         toast(b.done ? 'Remis « à préparer ».' : 'Préparé. Les réserves ont été mises à jour.');
       }
-      if (c === 'tonight') {
-        const d = today >= b.day ? today : b.day;
-        if (!plan.getMeal(d, 'soir')) toast('Aucun repas prévu ce soir-là : prévois d’abord le repas.', { kind: 'error' });
-        else plan.setDessert(d, 'soir', { cake: b.id });
+      if (c === 'take') await takeSheet(b, today);
+      if (c === 'release') {
+        const n = plan.releaseBake(b.id, today);
+        toast(n ? `${calc.fmt1(n)} part${n > 1 ? 's' : ''} libérée${n > 1 ? 's' : ''} : place-les où tu veux.` : 'Aucune part prévue à partir d’aujourd’hui.');
       }
       if (c === 'del' && await confirmSheet('Retirer ce dessert ?', 'Les parts prévues en dessert seront retirées des repas.', { ok: 'Retirer', danger: true })) plan.removeBake(b.id);
       return ctx.render();
+    }
+    const tk = e.target.closest('[data-take]');
+    if (tk) {
+      const b = plan.bakes().find((x) => x.id === tk.dataset.take);
+      if (b && await takeSheet(b, today)) ctx.render();
+      return;
     }
     if (e.target.closest('[data-add-bake]')) {
       let id = await pickRecipe({ title: 'Dessert de la semaine', cats: ['dessert'], only: food.isLot, create: 'Créer mon gâteau, avec mes ingrédients' });
@@ -317,4 +326,38 @@ export function renderWeek(view, ctx, startParam) {
       } else if (c) generate(c);
     }
   });
+}
+
+// Prendre des parts du dessert de la semaine : le jour (passé compris), le repas, combien.
+async function takeSheet(b, today) {
+  const r = food.recipe(b.recipe);
+  const left = b.parts - plan.bakeUsed(b.id);
+  if (!r || left <= 0) {
+    toast('Plus aucune part de ce gâteau.', { kind: 'error' });
+    return false;
+  }
+  const days = Array.from({ length: 18 }, (_, i) => calc.addDays(b.day, i - 7));
+  const res = await openSheet({
+    title: `${r.name}`,
+    body: `<form class="form" data-form>
+      <div class="field-row">
+        <label class="field"><span>Jour</span><select name="day">${days.map((d) => `<option value="${d}" ${d === today ? 'selected' : ''}>${esc(calc.relDay(d))}${calc.relDay(d) === calc.fmtDayName(d) ? '' : ` (${esc(calc.fmtShort(d))})`}</option>`).join('')}</select></label>
+        <label class="field"><span>Repas</span><select name="slot">${['petitdej', 'midi', 'collation', 'soir'].map((sl) => `<option value="${sl}" ${sl === (new Date().getHours() < 11 ? 'petitdej' : new Date().getHours() < 16 ? 'collation' : 'soir') ? 'selected' : ''}>${esc(plan.SLOT_LABELS[sl])}</option>`).join('')}</select></label>
+      </div>
+      <label class="field"><span>Nombre de parts</span><select name="n">${Array.from({ length: Math.min(8, left * 2) }, (_, i) => (i + 1) / 2).filter((n) => n <= left).map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${food.fmtCount(n)} part${n > 1 ? 's' : ''}</option>`).join('')}</select></label>
+      <p class="field-help">Il reste ${left} part${left > 1 ? 's' : ''}. Elles s’ajoutent à ce qui est déjà prévu à ce repas ; s’il n’y a rien, le repas ne contiendra que le gâteau.</p>
+    </form>`,
+    actions: [
+      { label: 'Annuler', value: null },
+      { label: 'Prendre', kind: 'primary', handler: (el) => formData(el) },
+    ],
+  });
+  if (!res) return false;
+  const m = plan.getMeal(res.day, res.slot);
+  const n = Number(res.n) || 1;
+  // même gâteau déjà pris à ce repas : on additionne
+  const total = m && m.cake === b.id ? plan.cakeParts(m) + n : n;
+  plan.takeCake(res.day, res.slot, b.id, Math.min(total, left + (m && m.cake === b.id ? plan.cakeParts(m) : 0)));
+  toast(`${food.fmtCount(n)} part${n > 1 ? 's' : ''} : ${plan.SLOT_LABELS[res.slot].toLowerCase()}, ${calc.relDay(res.day).toLowerCase()}.`);
+  return true;
 }

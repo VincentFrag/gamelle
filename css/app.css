@@ -1145,3 +1145,10 @@ body[data-tab='plus'] { --sec: var(--sec-plus); }
 .mrow.is-on { border-color: color-mix(in srgb, var(--c-dessert) 50%, var(--line)); background: color-mix(in srgb, var(--c-dessert) 8%, var(--surface)); }
 .mstep .icon-btn:disabled { opacity: .35; }
 [data-cake-box]:not(:empty) + [data-eye-box] { margin-top: 12px; }
+
+/* 1.5.1 : choix d'un aliment, parts du gâteau */
+.pick-head { position: sticky; top: -1px; z-index: 2; background: var(--surface); padding-bottom: 8px; }
+.pick-head .search { position: static; padding-bottom: 6px; }
+.pick-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.pick-actions .icon { width: 15px; height: 15px; }
+.bake .btn.small { flex: none; }

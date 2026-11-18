@@ -103,7 +103,7 @@ export function mealStats(m, s = calc.settings()) {
 
 export function mealTitle(m) {
   // petit-déj ou collation composés : la part de gâteau fait partie du repas
-  if (m.kind === 'compo' && (m.slot === 'petitdej' || m.slot === 'collation') && m.cake) {
+  if (m.kind === 'compo' && m.cake && (m.slot === 'petitdej' || m.slot === 'collation' || !m.parts?.length)) {
     const rest = m.parts?.length ? food.compoTitle(m.parts).toLowerCase() : '';
     return [cakeLabel(m), rest].filter(Boolean).join(', ');
   }
@@ -345,12 +345,45 @@ export function bakesOfWeek(start) {
 }
 
 // Desserts de la semaine dont il reste des parts pour un repas donné (préparés dans les 7 jours avant)
+// Fenêtre large : le gâteau se mange de quelques jours avant la date notée (date approximative,
+// repas rattrapés) jusqu'à 10 jours après.
 export function bakesFor(day, current = null) {
-  return bakes().filter((b) => b.day <= day && b.day >= calc.addDays(day, -7) && (b.id === current || bakeUsed(b.id) < b.parts));
+  return bakes().filter((b) => day >= calc.addDays(b.day, -7) && day <= calc.addDays(b.day, 10) && (b.id === current || bakeUsed(b.id) < b.parts));
+}
+
+// Prendre des parts à un repas, en gardant ce qui y est déjà (dessert à l'œil, petit-déj…).
+// Sans repas prévu : on crée un repas qui ne contient que le gâteau.
+export function takeCake(day, slot, bakeId, n) {
+  const m = getMeal(day, slot);
+  if (!m) {
+    setMeal(day, slot, { kind: 'compo', portions: 1, cooked: 1, cake: bakeId, cakeN: n === 1 ? undefined : n });
+    return;
+  }
+  const { id: _i, ...data } = m;
+  delete data.dessert;
+  data.cake = bakeId;
+  if (n === 1) delete data.cakeN;
+  else data.cakeN = n;
+  store.put('meal', mealId(day, slot), { ...data, day, slot });
+}
+
+// Retire les parts placées à partir d'un jour (pour les replacer soi-même)
+export function releaseBake(id, fromDay) {
+  let n = 0;
+  store.batch((b) => {
+    for (const r of store.all('meal')) {
+      if (r.data.cake !== id || r.data.day < fromDay) continue;
+      const { cake: _c, cakeN: _n, ...data } = r.data;
+      n += r.data.cakeN ?? 1;
+      if (data.kind === 'compo' && !data.parts && !data.sauce && !data.sauceParts) b.remove('meal', r.id);
+      else b.put('meal', r.id, data);
+    }
+  });
+  return n;
 }
 
 // Ajoute un dessert de la semaine. eachEvening : une part en dessert chaque soir déjà prévu, à partir de ce jour.
-export function addBake(recipeId, day, parts, { eachEvening = true } = {}) {
+export function addBake(recipeId, day, parts, { eachEvening = false } = {}) {
   const id = store.uuid();
   store.batch((b) => {
     b.put('bake', id, { recipe: recipeId, day, parts });

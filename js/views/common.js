@@ -280,11 +280,12 @@ function portionsSheet(m) {
 }
 
 // Choix du jour et du repas, pour ce qu'on ajoute depuis une fiche
-function whenFields(slots, { help = '' } = {}) {
+function whenFields(slots, { help = '', past = 0, day = null, label = 'Jour' } = {}) {
   const today = calc.localDay();
-  const days = Array.from({ length: 10 }, (_, i) => calc.addDays(today, i));
+  const days = Array.from({ length: 10 + past }, (_, i) => calc.addDays(today, i - past));
+  const sel = day || today;
   return `<div class="field-row">
-    <label class="field"><span>Jour</span><select name="day">${days.map((d) => `<option value="${d}">${esc(calc.relDay(d))}${d !== today && calc.relDay(d) === calc.fmtDayName(d) ? '' : ` (${esc(calc.fmtShort(d))})`}</option>`).join('')}</select></label>
+    <label class="field"><span>${esc(label)}</span><select name="day">${days.map((d) => `<option value="${d}" ${d === sel ? 'selected' : ''}>${esc(calc.relDay(d))}${d !== today && calc.relDay(d) === calc.fmtDayName(d) ? '' : ` (${esc(calc.fmtShort(d))})`}</option>`).join('')}</select></label>
     ${slots.length > 1 ? `<label class="field"><span>Repas</span><select name="slot">${slots.map((sl) => `<option value="${sl}">${esc(plan.SLOT_LABELS[sl])}</option>`).join('')}</select></label>` : `<input type="hidden" name="slot" value="${slots[0]}">`}
   </div>${help ? `<p class="field-help">${help}</p>` : ''}`;
 }
@@ -726,9 +727,9 @@ export async function bakeSheet(r, ctx, { day = null } = {}) {
     title: r.name,
     body: `<form class="form" data-form>
       <p>Préparé une fois, mangé en parts dans la semaine. Les ingrédients passent une seule fois dans les courses, le prix et les calories sont comptés par part.</p>
-      ${day ? `<input type="hidden" name="day" value="${day}">` : whenFields(['soir'], {})}
+      ${whenFields(['soir'], { past: 7, day, label: 'Préparé (ou à préparer) le' })}
       <label class="field"><span>Nombre de parts</span><input name="parts" inputmode="numeric" value="${esc(r.serves)}"></label>
-      <label class="switch"><input type="checkbox" name="each" checked><span>Une part en dessert chaque soir<small>Sur les soirs déjà prévus à partir de ce jour. Tu peux toujours en changer.</small></span></label>
+      <p class="field-help">Aucune part n’est placée d’office : tu les prends quand tu veux, au petit-déj, en collation ou en dessert, jusqu’à épuisement.</p>
     </form>`,
     actions: [
       { label: 'Annuler', value: null },
@@ -737,7 +738,7 @@ export async function bakeSheet(r, ctx, { day = null } = {}) {
   });
   if (!res) return false;
   const parts = Math.max(1, Math.min(30, Math.round(calc.parseNum(res.parts) || r.serves)));
-  plan.addBake(r.id, res.day, parts, { eachEvening: res.each });
+  plan.addBake(r.id, res.day, parts);
   toast(`${r.name} ajouté, ${parts} parts.`, { action: 'Voir', onAction: () => ctx.go(`/semaine/${calc.weekStart(res.day)}`) });
   return true;
 }
