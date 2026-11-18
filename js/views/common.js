@@ -59,7 +59,7 @@ export function recipeRow(r, { href = true, data = '' } = {}) {
 }
 
 // ---------- Choisir une recette ----------
-export function pickRecipe({ title = 'Choisir une recette', cat = null, cats = ['diner', 'petitdej', 'collation'], only = null } = {}) {
+export function pickRecipe({ title = 'Choisir une recette', cat = null, cats = ['diner', 'petitdej', 'collation'], only = null, create = null } = {}) {
   const s = calc.settings();
   let filter = cat || cats[0];
   let q = '';
@@ -70,6 +70,7 @@ export function pickRecipe({ title = 'Choisir une recette', cat = null, cats = [
       <div class="chips tight" role="group" aria-label="Type">
         ${cats.length > 1 ? cats.map((k) => `<button type="button" class="chip ${k === filter ? 'is-on' : ''}" data-cat="${k}">${esc(food.CAT_LABELS[k])}</button>`).join('') : ''}
       </div>
+      ${create ? `<button type="button" class="btn primary block" data-create>${icon('add')} ${esc(create)}</button>` : ''}
       <div class="list pick-results" data-results></div>`,
     onMount(el, api) {
       const draw = () => {
@@ -93,10 +94,114 @@ export function pickRecipe({ title = 'Choisir une recette', cat = null, cats = [
         }
         const p = e.target.closest('[data-pick]');
         if (p) api.close(p.dataset.pick);
+        if (e.target.closest('[data-create]')) api.close('__create');
       });
       draw();
     },
   });
+}
+
+// ---------- Mon gâteau (dessert de la semaine perso) ----------
+// Tes ingrédients pour tout le gâteau, le nombre de parts : calories et prix par part en direct.
+// Enregistré comme une recette perso (dessert, « dessert de la semaine »). Renvoie l'id.
+export async function myCakeSheet(existingId = null) {
+  const ex = existingId ? food.recipe(existingId) : null;
+  const ing = new Map(ex ? ex.ing : []);
+  const res = await openSheet({
+    title: ex ? 'Modifier mon gâteau' : 'Mon gâteau',
+    wide: true,
+    body: `<form class="form" data-form>
+      <label class="field big"><span>Nom</span><input name="name" maxlength="80" value="${esc(ex?.name || '')}" placeholder="Ex. : gâteau au fromage blanc" required></label>
+      <div class="field-row">
+        <label class="field"><span>Nombre de parts</span><input name="parts" inputmode="numeric" value="${esc(ex?.serves || 8)}"></label>
+        <label class="field"><span>Durée (min)</span><input name="time" inputmode="numeric" value="${esc(ex?.time || 45)}"></label>
+      </div>
+      <h3 class="group-title">Ingrédients, pour tout le gâteau</h3>
+      <div class="ing-edit" data-ings></div>
+      <button type="button" class="btn ghost" data-add-ing>${icon('add')} Ajouter un ingrédient</button>
+      <div class="compo-total" data-total></div>
+      <label class="field"><span>Étapes, une par ligne (facultatif)</span><textarea name="steps" rows="4" placeholder="Bats les blancs en neige.">${esc((ex?.steps || []).map((st) => st.t).join('\n'))}</textarea></label>
+    </form>`,
+    onMount(el) {
+      const parts = () => Math.max(1, Math.min(30, Math.round(calc.parseNum(el.querySelector('[name=parts]').value) || 8)));
+      const total = () => {
+        const list = [...ing];
+        const box = el.querySelector('[data-total]');
+        if (!list.length) {
+          box.innerHTML = '<span class="fine">Ajoute tes ingrédients : les calories et le prix par part se calculent tout seuls.</span>';
+          return;
+        }
+        const st = food.sumOf(list);
+        const n = parts();
+        box.innerHTML = `<span class="compo-name">Une part sur ${n}</span>
+          <span class="compo-figs">${macros({ kcal: st.kcal / n, p: st.p / n, c: st.c / n, f: st.f / n })} ${priceTag(st.cost / n)}</span>
+          <span class="fine">Gâteau entier : ${calc.fmt0(st.kcal)} kcal, ${esc(calc.fmtEur(st.cost))}</span>`;
+      };
+      const drawIngs = () => {
+        el.querySelector('[data-ings]').innerHTML = [...ing].map(([id, q]) => {
+          const it = food.ingredient(id);
+          if (!it) return '';
+          return `<div class="ing-row"><span class="ing-row-name">${esc(it.name)}</span>
+            <label class="ing-row-qty"><span class="sr-only">Quantité</span><input inputmode="decimal" data-ing-q="${esc(id)}" value="${esc(calc.numInput(q))}"><span>${it.unit === 'pc' ? 'pièce(s)' : it.unit}</span></label>
+            <button type="button" class="icon-btn" data-ing-del="${esc(id)}" aria-label="Retirer ${esc(it.name)}">${icon('trash')}</button></div>`;
+        }).join('');
+        total();
+      };
+      el.addEventListener('input', (e) => {
+        const q = e.target.closest('[data-ing-q]');
+        if (q) {
+          const v = calc.parseNum(q.value);
+          if (v > 0 && v < 10000) ing.set(q.dataset.ingQ, v);
+        }
+        total();
+      });
+      el.addEventListener('click', async (e) => {
+        if (e.target.closest('[data-add-ing]')) {
+          const id = await pickIngredient({ title: 'Ingrédient du gâteau' });
+          if (id && !ing.has(id)) {
+            const it = food.ingredient(id);
+            ing.set(id, it?.unit === 'pc' ? 1 : 100);
+          }
+          drawIngs();
+          return;
+        }
+        const d = e.target.closest('[data-ing-del]');
+        if (d) {
+          ing.delete(d.dataset.ingDel);
+          drawIngs();
+        }
+      });
+      drawIngs();
+    },
+    actions: [
+      { label: 'Annuler', value: null },
+      {
+        label: 'Enregistrer', kind: 'primary',
+        handler(el) {
+          const f = formData(el);
+          if (!f.name.trim()) {
+            toast('Donne un nom à ton gâteau.', { kind: 'error' });
+            return false;
+          }
+          if (!ing.size) {
+            toast('Ajoute au moins un ingrédient.', { kind: 'error' });
+            return false;
+          }
+          const rid = existingId || store.uuid();
+          const n = Math.max(1, Math.min(30, Math.round(calc.parseNum(f.parts) || 8)));
+          store.put('recipe', rid, {
+            name: f.name.trim(), cat: 'dessert', style: 'equilibre', time: calc.parseNum(f.time) || 45, serves: n,
+            equip: ex?.equip || ['four'], freeze: ex?.freeze ?? true, gamelle: true,
+            tags: [...new Set([...(ex?.tags || []), 'lot'])], ing: [...ing],
+            steps: f.steps.split('\n').map((t) => t.trim()).filter(Boolean).map((t) => ({ t })),
+          });
+          toast(existingId ? 'Gâteau modifié.' : `${f.name.trim()} enregistré dans tes recettes.`);
+          return rid;
+        },
+      },
+    ],
+  });
+  return res || null;
 }
 
 // ---------- Saisie d'un repas hors recette (commande, repas libre) ----------

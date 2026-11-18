@@ -52,7 +52,7 @@ export async function pickIngredient({ title = 'Aliment', group = null } = {}) {
         let list = food.ingredients();
         if (nq) list = list.filter((i) => food.norm(i.name).includes(nq));
         else if (group) list = list.filter((i) => groupOf(i) === group);
-        list = list.sort((a, b) => (nq ? food.norm(b.name).startsWith(nq) - food.norm(a.name).startsWith(nq) : 0) || a.name.localeCompare(b.name, 'fr')).slice(0, 80);
+        list = list.sort((a, b) => (nq ? food.norm(b.name).startsWith(nq) - food.norm(a.name).startsWith(nq) : 0) || a.name.localeCompare(b.name, 'fr')).slice(0, 250);
         el.querySelector('[data-results]').innerHTML = list.map((i) => `<button type="button" class="list-row" data-pick="${esc(i.id)}"><span class="list-main">${esc(i.name)}<small>${calc.fmt0(i.kcal)} kcal, ${calc.fmt1(i.p)} g de protéines pour 100 ${i.unit === 'ml' ? 'ml' : 'g'}${i.custom ? ', ajouté par toi' : ''}</small></span></button>`).join('')
           || `<p class="empty pad">Rien de tel dans tes aliments. Cherche-le sur Open Food Facts : calories et macros se remplissent toutes seules.</p>`;
       };

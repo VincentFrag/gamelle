@@ -3,7 +3,7 @@ import * as calc from '../calc.js';
 import * as food from '../food.js';
 import * as plan from '../plan.js';
 import { esc, icon, menuSheet, confirmSheet, toast } from '../ui.js';
-import { priceTag, mealActions, gauge, pickRecipe, bakeSheet, dessertSheet } from './common.js';
+import { priceTag, mealActions, gauge, pickRecipe, bakeSheet, dessertSheet, myCakeSheet } from './common.js';
 import { todayCard, todayClick, craquageSheet, snackRow } from './today.js';
 
 function mealSub(m) {
@@ -233,11 +233,27 @@ export function renderWeek(view, ctx, startParam) {
       if (!b) return;
       const c = await menuSheet(r ? r.name : 'Dessert', [
         ...(r ? [{ label: 'Voir la recette', value: 'open', icon: 'recettes' }] : []),
+        ...(r && !r.base ? [{ label: 'Modifier mon gâteau', value: 'edit', icon: 'edit' }] : []),
+        { label: 'Changer de gâteau', value: 'swap', icon: 'shuffle' },
         { label: b.done ? 'Annuler « préparé »' : 'Marquer comme préparé', value: 'done', icon: 'check' },
         { label: 'Une part en dessert ce soir', value: 'tonight', icon: 'add' },
         { label: 'Retirer', value: 'del', icon: 'trash', danger: true },
       ]);
       if (c === 'open') ctx.go(`/recettes/${r.id}?p=${r.serves}`);
+      if (c === 'edit') {
+        const nid = await myCakeSheet(r.id);
+        // le nombre de parts prévu suit la recette modifiée
+        if (nid) plan.patchBake(b.id, { parts: Math.max(plan.bakeUsed(b.id), food.recipe(nid).serves) });
+      }
+      if (c === 'swap') {
+        // Même place dans la semaine, mêmes parts déjà prévues : seule la recette change
+        let nid = await pickRecipe({ title: 'Changer de gâteau', cats: ['dessert'], only: food.isLot, create: 'Créer mon gâteau, avec mes ingrédients' });
+        if (nid === '__create') nid = await myCakeSheet();
+        if (nid) {
+          plan.patchBake(b.id, { recipe: nid, parts: Math.max(plan.bakeUsed(b.id), food.recipe(nid).serves) });
+          toast(`Remplacé par ${food.recipe(nid).name}.`);
+        }
+      }
       if (c === 'done') {
         plan.setBakeDone(b, !b.done);
         toast(b.done ? 'Remis « à préparer ».' : 'Préparé. Les réserves ont été mises à jour.');
@@ -251,7 +267,8 @@ export function renderWeek(view, ctx, startParam) {
       return ctx.render();
     }
     if (e.target.closest('[data-add-bake]')) {
-      const id = await pickRecipe({ title: 'Dessert de la semaine', cats: ['dessert'], only: food.isLot });
+      let id = await pickRecipe({ title: 'Dessert de la semaine', cats: ['dessert'], only: food.isLot, create: 'Créer mon gâteau, avec mes ingrédients' });
+      if (id === '__create') id = await myCakeSheet();
       if (id && await bakeSheet(food.recipe(id), ctx, { day: start > today ? start : (isCurrent ? today : start) })) ctx.render();
       return;
     }

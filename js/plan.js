@@ -368,6 +368,11 @@ export function addBake(recipeId, day, parts, { eachEvening = true } = {}) {
   return id;
 }
 
+export function patchBake(id, partial) {
+  const cur = store.get('bake', id);
+  if (cur) store.put('bake', id, { ...cur.data, ...partial });
+}
+
 export function removeBake(id) {
   store.batch((b) => {
     for (const r of store.all('meal')) {

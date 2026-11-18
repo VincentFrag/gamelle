@@ -3,7 +3,7 @@ import * as store from '../store.js';
 import * as calc from '../calc.js';
 import * as food from '../food.js';
 import { esc, icon, openSheet, menuSheet, confirmSheet, toast, formData } from '../ui.js';
-import { priceTag, recipeRow, addToPlan, styleTag } from './common.js';
+import { priceTag, recipeRow, addToPlan, styleTag, myCakeSheet } from './common.js';
 import { EQUIP, STYLES, RAYONS, UNITS } from '../clean.js';
 
 const FILTERS = [
@@ -62,11 +62,19 @@ export function renderRecipes(view, ctx) {
     const hint = {
       budget: 'Plats équilibrés autour de 1,50 à 2 € la portion, du moins cher au plus cher. Pour une fin de mois difficile, active aussi « Petit budget » (bouton des propositions de la Semaine) : Gamelle les choisira pour toi.', plaisir: 'Tes commandes habituelles, faites maison. Gamelle en glisse au plus une par semaine dans ses propositions (réglable).', sauce: 'Pour relever un plat simple : pâtes ou riz, une protéine, un légume. Le bouton « Ajouter au planning » compose l’assiette.', lot: 'Préparés une fois, mangés en parts dans la semaine. Prix et valeurs par part.', dessert: 'À ajouter à un repas en deux gestes, depuis l’écran Semaine.' }[state.filter];
     view.querySelector('[data-list]').innerHTML = list.length
-      ? `${hint ? `<p class="block-sub">${esc(hint)}</p>` : ''}<p class="list-count">${list.length} recette${list.length > 1 ? 's' : ''}, prix et valeurs ${state.filter === 'lot' ? 'par part' : 'par portion'}</p><div class="list">${list.map((r) => recipeRow(r)).join('')}</div>`
+      ? `${hint ? `<p class="block-sub">${esc(hint)}</p>` : ''}${state.filter === 'lot' ? `<button class="btn primary add-top" data-my-cake>${icon('add')} Créer mon gâteau</button>` : ''}<p class="list-count">${list.length} recette${list.length > 1 ? 's' : ''}, prix et valeurs ${state.filter === 'lot' ? 'par part' : 'par portion'}</p><div class="list">${list.map((r) => recipeRow(r)).join('')}</div>`
       : `<p class="empty">${state.filter === 'perso' && !nq ? 'Tu n’as pas encore créé de recette. Le bouton + en haut permet d’en ajouter une, ou de partir d’une recette existante avec « Dupliquer ».' : 'Aucune recette ne correspond.'}</p>`;
   };
   view.querySelector('[data-q]').addEventListener('input', (e) => { state.q = e.target.value; draw(); });
-  view.addEventListener('click', (e) => {
+  view.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-my-cake]')) {
+      const id = await myCakeSheet();
+      if (id) {
+        draw();
+        await addToPlan(food.recipe(id), ctx);
+      }
+      return;
+    }
     const c = e.target.closest('[data-f]');
     if (!c) return;
     state.filter = c.dataset.f;
@@ -220,7 +228,7 @@ export function renderRecipeEdit(view, ctx, id) {
         </div>
         <div class="field-row">
           <label class="field"><span>Durée totale (min)</span><input name="time" inputmode="numeric" value="${esc(r.time)}"></label>
-          <label class="field"><span>Portions</span><input name="serves" inputmode="numeric" value="${esc(r.serves)}"></label>
+          <label class="field"><span>${(r.tags || []).includes('lot') ? 'Nombre de parts' : 'Portions'}</span><input name="serves" inputmode="numeric" value="${esc(r.serves)}"></label>
         </div>
         <fieldset class="field"><legend>Matériel</legend><div class="checks">
           ${EQUIP.map((e) => `<label class="switch"><input type="checkbox" name="eq-${e}" ${(r.equip || []).includes(e) ? 'checked' : ''}><span>${esc(food.EQUIP_LABELS[e])}</span></label>`).join('')}
@@ -229,7 +237,7 @@ export function renderRecipeEdit(view, ctx, id) {
         <label class="switch"><input type="checkbox" name="gamelle" ${r.gamelle !== false ? 'checked' : ''}><span>Se garde pour la gamelle du lendemain</span></label>
         <label class="switch"><input type="checkbox" name="lot" ${(r.tags || []).includes('lot') ? 'checked' : ''}><span>Dessert de la semaine<small>Pour un gâteau ou un dessert préparé une fois et mangé en parts. Les portions deviennent des parts.</small></span></label>
 
-        <h2 class="block-title">Ingrédients <small>pour ${esc(r.serves)} portions</small></h2>
+        <h2 class="block-title">Ingrédients <small>${(r.tags || []).includes('lot') ? 'pour tout le gâteau' : `pour ${esc(r.serves)} portions`}</small></h2>
         <div class="ing-edit">${r.ing.map(([iid, q], i) => {
           const ing = food.ingredient(iid);
           return `<div class="ing-row"><span class="ing-row-name">${esc(ing?.name || iid)}</span>
